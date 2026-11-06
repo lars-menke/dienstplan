@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Terminliste (dunkel)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#e8ff2b}a:hover{color:#f4ff8a}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #0b1530; color: #eef1f8; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column">
+
+<header style="padding: 18px 16px 12px; display: flex; flex-direction: column; gap: 12px; background: #0b1530; border-bottom: 1px solid #263463">
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="width: 40px; height: 40px; border-radius: 12px; background: #e8ff2b; color: #0b1530; display: flex; align-items: center; justify-content: center; flex: none">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18"></path><path d="M8 3v4"></path><path d="M16 3v4"></path></svg>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1">Dienstplan</span>
+<span style="font-size: 13px; color: #a7b2cf; display: flex; align-items: center; gap: 5px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5fd38a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Im Kalender · Stand 08:31</span>
+</div>
+<button type="button" aria-label="Neu laden" style="width: 44px; height: 44px; border-radius: 12px; border: 1px solid #263463; background: #141f40; color: #eef1f8; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>
+</button>
+<button type="button" aria-label="Weitere Aktionen" style="width: 44px; height: 44px; border-radius: 12px; border: 1px solid #263463; background: #141f40; color: #eef1f8; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+</button>
+</div>
+
+<div style="display: flex; gap: 8px">
+<div role="group" aria-label="Ansicht" style="flex: 1; display: flex; padding: 3px; border-radius: 12px; background: #18234a">
+<button type="button" aria-pressed="true" style="flex: 1; height: 38px; border: 0; border-radius: 9px; background: #141f40; font: inherit; font-size: 14px; font-weight: 600; color: #eef1f8; box-shadow: 0 1px 2px rgba(0,0,0,.08); cursor: pointer">Liste</button>
+<a href="Woche-Dunkel.dc.html" style="flex: 1; height: 38px; border-radius: 9px; font-size: 14px; font-weight: 500; color: #c3cbe0; text-decoration: none; display: flex; align-items: center; justify-content: center">Woche</a>
+</div>
+<button type="button" style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #5a661d; background: #2c3414; color: #e8ff2b; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Heute</button>
+</div>
+
+<label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 12px; background: #141f40; border: 1px solid #263463; color: #a7b2cf">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<input type="search" placeholder="Termine durchsuchen" aria-label="Termine durchsuchen" style="flex: 1; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; color: #eef1f8">
+</label>
+</header>
+
+<main style="flex: 1; overflow: hidden; padding: 8px 16px 120px; display: flex; flex-direction: column; gap: 8px">
+
+<button type="button" style="align-self: center; height: 36px; padding: 0 12px; border: 0; background: transparent; color: #a7b2cf; font: inherit; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>Vergangene Termine</button>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 0 2px 2px">
+<span style="height: 22px; padding: 0 8px; border-radius: 6px; background: #e8ff2b; color: #0b1530; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; letter-spacing: .02em">HEUTE</span>
+<span style="font-size: 13px; font-weight: 600; color: #c3cbe0">Freitag, 6. November</span>
+</div>
+
+<button type="button" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; background: #141f40; border: 1.5px solid #e8ff2b; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer; box-shadow: 0 4px 14px rgba(232,255,43,.10)">
+<div style="flex: none; width: 52px; padding: 7px 0; border-radius: 10px; background: #e8ff2b; color: #0b1530; display: flex; flex-direction: column; align-items: center; line-height: 1.15">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .05em">FR</span><span style="font-size: 22px; font-weight: 700">6</span><span style="font-size: 11px">Nov</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 16px; font-weight: 600; line-height: 1.3">Übungsdienst: Atemschutz</span>
+<span style="font-size: 14px; color: #a7b2cf">19:30–21:30 Uhr · Feuerwehrhaus</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: #1d2a55; font-size: 12px; font-weight: 600; color: #d4dae9"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ff5a4f"></span>Übung</span>
+<span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; background: #1d2a55; font-size: 12px; font-weight: 600; color: #d4dae9"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"></path><path d="M3 11V9a3 3 0 0 1 3-3h15"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v2a3 3 0 0 1-3 3H3"></path></svg>Serie</span>
+</div>
+</div>
+</button>
+
+<div style="font-size: 13px; font-weight: 700; color: #c3cbe0; letter-spacing: .06em; padding: 14px 2px 2px">DIESE WOCHE</div>
+
+<button type="button" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; background: #141f40; border: 1px solid #263463; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer">
+<div style="flex: none; width: 52px; padding: 7px 0; border-radius: 10px; background: #2c3414; color: #e8ff2b; display: flex; flex-direction: column; align-items: center; line-height: 1.15">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .05em">SO</span><span style="font-size: 22px; font-weight: 700">8</span><span style="font-size: 11px">Nov</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 16px; font-weight: 600; line-height: 1.3">Gruppendienst: FwDV 3</span>
+<span style="font-size: 14px; color: #a7b2cf">09:00–12:00 Uhr · Feuerwehrhaus</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: #1d2a55; font-size: 12px; font-weight: 600; color: #d4dae9"><span style="width: 8px; height: 8px; border-radius: 50%; background: #039be5"></span>Ausbildung</span>
+</div>
+</div>
+</button>
+
+<button type="button" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; background: #141f40; border: 1px solid #263463; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer">
+<div style="flex: none; width: 52px; padding: 7px 0; border-radius: 10px; background: #3a2a14; color: #ffaa5c; display: flex; flex-direction: column; align-items: center; line-height: 1.15">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .05em">DI</span><span style="font-size: 22px; font-weight: 700">10</span><span style="font-size: 11px">Nov</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 16px; font-weight: 600; line-height: 1.3; color: #a7b2cf">Dienstbesprechung</span>
+<span style="font-size: 14px; color: #a7b2cf">19:00 Uhr · Schulungsraum</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; background: #3a2a14; font-size: 12px; font-weight: 700; color: #ffaa5c"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>Verschoben auf Di 17.11.</span>
+</div>
+</div>
+</button>
+
+<button type="button" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; background: #141f40; border: 1px solid #263463; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer">
+<div style="flex: none; width: 52px; padding: 7px 0; border-radius: 10px; background: #1b2547; color: #9aa5c4; display: flex; flex-direction: column; align-items: center; line-height: 1.15">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .05em">DO</span><span style="font-size: 22px; font-weight: 700">12</span><span style="font-size: 11px">Nov</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 16px; font-weight: 600; line-height: 1.3; color: #8d98b8; text-decoration: line-through">Maschinistenausbildung</span>
+<span style="font-size: 14px; color: #8d98b8">19:00–21:30 Uhr · Feuerwehrhaus</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; background: #1b2547; font-size: 12px; font-weight: 700; color: #c3cbe0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>Abgesagt</span>
+</div>
+</div>
+</button>
+
+<button type="button" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; background: #141f40; border: 1px solid #263463; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer">
+<div style="flex: none; width: 52px; padding: 7px 0; border-radius: 10px; background: #2c3414; color: #e8ff2b; display: flex; flex-direction: column; align-items: center; line-height: 1.15">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .05em">SA</span><span style="font-size: 22px; font-weight: 700">14</span><span style="font-size: 11px">Nov</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 16px; font-weight: 600; line-height: 1.3">Erste-Hilfe-Lehrgang</span>
+<span style="font-size: 14px; color: #a7b2cf">Ganztägig · FTZ</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: #1d2a55; font-size: 12px; font-weight: 600; color: #d4dae9"><span style="width: 8px; height: 8px; border-radius: 50%; background: #039be5"></span>Ausbildung</span>
+</div>
+</div>
+</button>
+
+<div style="font-size: 13px; font-weight: 700; color: #c3cbe0; letter-spacing: .06em; padding: 14px 2px 2px">SPÄTER IM NOVEMBER</div>
+
+<button type="button" style="display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 12px; background: #141f40; border: 1px solid #263463; border-radius: 14px; text-align: left; font: inherit; color: inherit; cursor: pointer">
+<div style="flex: none; width: 52px; padding: 7px 0; border-radius: 10px; background: #2c3414; color: #e8ff2b; display: flex; flex-direction: column; align-items: center; line-height: 1.15">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: .05em">DI</span><span style="font-size: 22px; font-weight: 700">17</span><span style="font-size: 11px">Nov</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 16px; font-weight: 600; line-height: 1.3">Dienstbesprechung</span>
+<span style="font-size: 14px; color: #a7b2cf">19:00 Uhr · Schulungsraum</span>
+<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: #1d2a55; font-size: 12px; font-weight: 600; color: #d4dae9"><span style="width: 8px; height: 8px; border-radius: 50%; background: #7986cb"></span>Besprechung</span>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #1d2a55; font-size: 12px; font-weight: 500; color: #c3cbe0">vom 10.11. verschoben</span>
+</div>
+</div>
+</button>
+
+</main>
+
+<div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 140px; background: linear-gradient(to bottom, rgba(11,21,48,0), #0b1530 70%)"></div>
+
+<button type="button" style="position: absolute; right: 16px; bottom: 28px; height: 56px; padding: 0 22px 0 18px; border: 0; border-radius: 18px; background: #e8ff2b; color: #0b1530; font: inherit; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 24px rgba(232,255,43,.28); cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Termin
+</button>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

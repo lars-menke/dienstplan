@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Weitere Aktionen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b71c1c}a:hover{color:#8e1c16}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #f4f3f0; color: #1b1b1b; font-family: Inter, system-ui, sans-serif">
+
+<div aria-hidden="true" style="padding: 18px 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 12px"><div style="width: 40px; height: 40px; border-radius: 12px; background: #c62828"></div><span style="font-size: 22px; font-weight: 700">Dienstplan</span></div>
+<div style="height: 44px; border-radius: 12px; background: #e9e8e3"></div>
+<div style="height: 92px; border-radius: 14px; background: #ffffff"></div>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,.42)"></div>
+
+<section role="dialog" aria-label="Weitere Aktionen" style="position: absolute; left: 0; right: 0; bottom: 0; height: 800px; background: #fff; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; padding: 10px 20px 28px; box-sizing: border-box; gap: 18px">
+<div aria-hidden="true" style="align-self: center; width: 40px; height: 5px; border-radius: 3px; background: #d6d4ce"></div>
+
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="width: 44px; height: 44px; border-radius: 50%; background: #fdecec; color: #b71c1c; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; flex: none">L</div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px; color: #5f5f5f">Angemeldet als</span>
+<span style="display: flex; align-items: center; gap: 8px"><span style="font-size: 17px; font-weight: 700">Lars</span><span style="height: 22px; padding: 0 8px; border-radius: 6px; background: #1b1b1b; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em; display: inline-flex; align-items: center">ADMIN</span></span>
+</div>
+<button type="button" aria-label="Schließen" style="flex: none; width: 44px; height: 44px; border-radius: 12px; border: 1px solid #e4e2dd; background: #f6f6f4; color: #1b1b1b; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
+</button>
+</div>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="padding: 0 0 8px; font-size: 13px; font-weight: 600; color: #4a4a4a">Darstellung</legend>
+<div style="display: flex; flex-direction: column; border: 1px solid #e4e2dd; border-radius: 14px; overflow: hidden">
+
+<label style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; background: #fdecec; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b71c1c" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.9 4.9l1.4 1.4"></path><path d="M17.7 17.7l1.4 1.4"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.9 19.1l1.4-1.4"></path><path d="M17.7 6.3l1.4-1.4"></path></svg>
+<span style="flex: 1; font-size: 16px; font-weight: 600">Hell</span>
+<input type="radio" name="theme" checked aria-label="Hell" style="width: 22px; height: 22px; margin: 0; accent-color: #c62828">
+</label>
+<div aria-hidden="true" style="height: 1px; background: #e4e2dd"></div>
+
+<label style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; background: #fff; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5f5f5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg>
+<span style="flex: 1; font-size: 16px; font-weight: 500">Dunkel</span>
+<input type="radio" name="theme" aria-label="Dunkel" style="width: 22px; height: 22px; margin: 0; accent-color: #c62828">
+</label>
+<div aria-hidden="true" style="height: 1px; background: #e4e2dd"></div>
+
+<label style="display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 14px; background: #fff; cursor: pointer">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5f5f5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"></rect><path d="M11 18h2"></path></svg>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 500">Systemeinstellung</span><span style="font-size: 13px; color: #5f5f5f">Folgt dem Handy</span></span>
+<input type="radio" name="theme" aria-label="Systemeinstellung" style="width: 22px; height: 22px; margin: 0; accent-color: #c62828">
+</label>
+</div>
+<span style="font-size: 12px; color: #5f5f5f; padding: 2px 2px 0">Gilt nur auf diesem Gerät.</span>
+</fieldset>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 600; color: #4a4a4a">Verwaltung</span>
+<div style="display: flex; flex-direction: column; border: 1px solid #e4e2dd; border-radius: 14px; overflow: hidden">
+<a href="Kategorien.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; background: #fff; color: #1b1b1b; text-decoration: none">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5f5f5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7.5" r="3.5"></circle><circle cx="16.5" cy="7.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="3.5"></circle><circle cx="16.5" cy="16.5" r="3.5"></circle></svg>
+<span style="flex: 1; font-size: 16px; font-weight: 500">Kategorien</span><span style="font-size: 14px; color: #5f5f5f">5</span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f5f5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+</a>
+<div aria-hidden="true" style="height: 1px; background: #e4e2dd"></div>
+<a href="Zugangscodes.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; background: #fff; color: #1b1b1b; text-decoration: none">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5f5f5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M10.8 12.2 20 3"></path><path d="m17 6 3 3"></path><path d="m14 9 2 2"></path></svg>
+<span style="flex: 1; font-size: 16px; font-weight: 500">Zugangscodes</span><span style="font-size: 14px; color: #5f5f5f">6</span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f5f5f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+</a>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<button type="button" style="height: 52px; border-radius: 12px; border: 1px solid #e4e2dd; background: #f6f6f4; color: #1b1b1b; font: inherit; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>Alle Termine jetzt synchronisieren
+</button>
+<span style="font-size: 12px; line-height: 1.45; color: #5f5f5f; padding: 0 2px">Nur nötig, wenn direkt im Sheet etwas geändert wurde. Dauert bis zu einer Minute.</span>
+</div>
+
+<div style="flex: 1"></div>
+
+<button type="button" style="height: 48px; border-radius: 12px; border: 0; background: transparent; color: #b3261e; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Abmelden</button>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

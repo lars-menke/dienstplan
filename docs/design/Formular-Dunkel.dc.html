@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Neuer Termin (dunkel)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#e8ff2b}a:hover{color:#f4ff8a}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: rgba(3,7,18,.62); color: #eef1f8; font-family: Inter, system-ui, sans-serif">
+
+<section role="dialog" aria-label="Neuer Termin" style="position: absolute; left: 0; right: 0; bottom: 0; height: 800px; background: #141f40; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; box-sizing: border-box">
+<div style="padding: 10px 20px 0; display: flex; flex-direction: column; gap: 14px">
+<div aria-hidden="true" style="align-self: center; width: 40px; height: 5px; border-radius: 3px; background: #33447a"></div>
+<h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">Neuer Termin</h2>
+</div>
+
+<div style="flex: 1; overflow: hidden; padding: 14px 20px 0; display: flex; flex-direction: column; gap: 16px">
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 600; color: #c3cbe0">Vorlage</span>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" aria-pressed="true" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 2px solid #e8ff2b; background: #2c3414; color: #e8ff2b; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Übungsdienst</button>
+<button type="button" aria-pressed="false" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #33447a; background: #1a2650; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Gruppendienst</button>
+<button type="button" aria-pressed="false" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #33447a; background: #1a2650; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Besprechung</button>
+<button type="button" aria-pressed="false" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #33447a; background: #1a2650; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Leer</button>
+</div>
+</div>
+
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Titel
+<input type="text" value="Übungsdienst: " style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 2px solid #e8ff2b; background: #141f40; font: inherit; font-size: 16px; font-weight: 400; color: #eef1f8">
+</label>
+
+<label style="display: flex; align-items: center; justify-content: space-between; height: 46px; padding: 0 12px; border-radius: 10px; background: #1a2650; border: 1px solid #263463; font-size: 15px; font-weight: 500">
+Ganztägig
+<span style="position: relative; width: 46px; height: 28px; border-radius: 999px; background: #3b4c80; display: inline-block">
+<input type="checkbox" aria-label="Ganztägig" style="position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer">
+<span aria-hidden="true" style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #141f40; box-shadow: 0 1px 3px rgba(0,0,0,.2)"></span>
+</span>
+</label>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Datum
+<input type="text" value="Fr 13.11.2026" style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #263463; background: #1a2650; font: inherit; font-size: 16px; font-weight: 400; color: #eef1f8">
+</label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Bis
+<input type="text" value="Fr 13.11.2026" style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #263463; background: #1a2650; font: inherit; font-size: 16px; font-weight: 400; color: #a7b2cf">
+</label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Beginn
+<input type="text" value="19:30" style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #263463; background: #1a2650; font: inherit; font-size: 16px; font-weight: 400; color: #eef1f8">
+</label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Ende
+<input type="text" value="21:30" style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #263463; background: #1a2650; font: inherit; font-size: 16px; font-weight: 400; color: #eef1f8">
+</label>
+</div>
+
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Ort
+<input type="text" value="Feuerwehrhaus" style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #263463; background: #1a2650; font: inherit; font-size: 16px; font-weight: 400; color: #eef1f8">
+</label>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 600; color: #c3cbe0">Kategorie</span>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" aria-pressed="true" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 2px solid #eef1f8; background: #141f40; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><span style="width: 10px; height: 10px; border-radius: 50%; background: #ff5a4f"></span>Übung</button>
+<button type="button" aria-pressed="false" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #33447a; background: #1a2650; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><span style="width: 10px; height: 10px; border-radius: 50%; background: #039be5"></span>Ausbildung</button>
+<button type="button" aria-pressed="false" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #33447a; background: #1a2650; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><span style="width: 10px; height: 10px; border-radius: 50%; background: #7986cb"></span>Besprechung</button>
+<button type="button" aria-pressed="false" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #33447a; background: #1a2650; color: #eef1f8; font: inherit; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; cursor: pointer"><span style="width: 10px; height: 10px; border-radius: 50%; background: #33b679"></span>Versammlung</button>
+</div>
+</div>
+
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #c3cbe0">Beschreibung
+<textarea rows="2" placeholder="z. B. PA mitbringen" style="box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #263463; background: #1a2650; font: inherit; font-size: 16px; font-weight: 400; color: #eef1f8; resize: none"></textarea>
+</label>
+</div>
+
+<div style="padding: 12px 20px 28px; display: flex; gap: 10px; border-top: 1px solid #263463; background: #141f40">
+<button type="button" style="flex: 1; height: 52px; border-radius: 12px; border: 1px solid #263463; background: #1a2650; color: #eef1f8; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Abbrechen</button>
+<button type="button" style="flex: 2; height: 52px; border-radius: 12px; border: 0; background: #e8ff2b; color: #0b1530; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer">Anlegen</button>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

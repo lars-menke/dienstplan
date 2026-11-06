@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Anmeldung</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#fff}a:hover{color:#ffe1e1}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #b71c1c; color: #fff; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; padding: 0 24px 40px; box-sizing: border-box">
+
+<div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 20px">
+<div style="width: 88px; height: 88px; border-radius: 24px; background: #fff; color: #c62828; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,.2)">
+<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18"></path><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M8.5 15l2.2 2.2 4.8-4.7"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h1 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em">Dienstplan</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.45; color: #ffe1e1">Termine der Feuerwehr pflegen – Änderungen landen sofort im Kalender der Mannschaft.</p>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; color: #ffe1e1">Zugangscode
+<input type="text" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" style="height: 56px; box-sizing: border-box; padding: 0 12px; border-radius: 14px; border: 0; background: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px; font-weight: 600; letter-spacing: .04em; text-align: center; color: #1b1b1b">
+</label>
+<button type="button" style="height: 56px; border-radius: 14px; border: 2px solid #fff; background: #7f1212; color: #fff; font: inherit; font-size: 17px; font-weight: 700; cursor: pointer">Anmelden</button>
+<p style="margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: #ffe1e1; text-align: center">Den Code oder einen Anmelde-Link bekommst du von der Person, die den Dienstplan pflegt.</p>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Neuer Zugangscode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b71c1c}a:hover{color:#8e1c16}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #f4f3f0; color: #1b1b1b; font-family: Inter, system-ui, sans-serif">
+
+<div aria-hidden="true" style="padding: 18px 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 12px"><div style="width: 44px; height: 44px; border-radius: 12px; background: #ffffff"></div><span style="font-size: 22px; font-weight: 700">Zugangscodes</span></div>
+<div style="height: 180px; border-radius: 14px; background: #ffffff"></div>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,.42)"></div>
+
+<section role="dialog" aria-label="Neuer Zugangscode" style="position: absolute; left: 0; right: 0; bottom: 0; height: 700px; background: #fff; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; padding: 10px 20px 28px; box-sizing: border-box; gap: 18px">
+<div aria-hidden="true" style="align-self: center; width: 40px; height: 5px; border-radius: 3px; background: #d6d4ce"></div>
+<h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">Neuer Zugangscode</h2>
+
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: #4a4a4a">Für wen?
+<input type="text" value="Gruppenführer 4" style="height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #e4e2dd; background: #f6f6f4; font: inherit; font-size: 16px; font-weight: 400; color: #1b1b1b">
+<span style="font-size: 12px; font-weight: 400; color: #5f5f5f">Erscheint bei „Letzte Änderung“ am Termin.</span>
+</label>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column">
+<legend style="padding: 0 0 8px; font-size: 13px; font-weight: 600; color: #4a4a4a">Rolle</legend>
+<div style="display: flex; flex-direction: column; border: 1px solid #e4e2dd; border-radius: 14px; overflow: hidden">
+
+<label style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 14px; box-sizing: border-box; background: #fff; cursor: pointer">
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 500">Lesen</span><span style="font-size: 13px; color: #5f5f5f">Termine ansehen, nichts ändern</span></span>
+<input type="radio" name="rolle" aria-label="Lesen" style="width: 22px; height: 22px; margin: 0; accent-color: #c62828">
+</label>
+<div aria-hidden="true" style="height: 1px; background: #e4e2dd"></div>
+
+<label style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 14px; box-sizing: border-box; background: #fdecec; cursor: pointer">
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 600">Schreiben</span><span style="font-size: 13px; color: #5f5f5f">Anlegen, bearbeiten, absagen, verschieben</span></span>
+<input type="radio" name="rolle" checked aria-label="Schreiben" style="width: 22px; height: 22px; margin: 0; accent-color: #c62828">
+</label>
+<div aria-hidden="true" style="height: 1px; background: #e4e2dd"></div>
+
+<label style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 14px; box-sizing: border-box; background: #fff; cursor: pointer">
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 500">Admin</span><span style="font-size: 13px; color: #5f5f5f">Alles – auch löschen, Kategorien, Codes</span></span>
+<input type="radio" name="rolle" aria-label="Admin" style="width: 22px; height: 22px; margin: 0; accent-color: #c62828">
+</label>
+</div>
+</fieldset>
+
+<div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: #f1f0ec; font-size: 13px; line-height: 1.45; color: #3d3d3d">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+<span>Danach bekommst du einen Anmelde-Link zum Teilen. Der Code wird nur einmal vollständig angezeigt.</span>
+</div>
+
+<div style="flex: 1"></div>
+
+<div style="display: flex; gap: 10px">
+<button type="button" style="flex: 1; height: 52px; border-radius: 12px; border: 1px solid #e4e2dd; background: #f6f6f4; color: #1b1b1b; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Abbrechen</button>
+<button type="button" style="flex: 2; height: 52px; border-radius: 12px; border: 0; background: #c62828; color: #fff; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer">Code erstellen</button>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

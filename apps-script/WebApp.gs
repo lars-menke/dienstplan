@@ -19,6 +19,10 @@
  ******************************************************/
 
 const WEBAPP = {
+  // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
+  // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
+  VERSION: '2.0 (Etappe 1)',
+
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
 
@@ -44,7 +48,7 @@ const MSG_FORBIDDEN = 'Dafür fehlen dir die Rechte.';
    ========================= */
 
 function doGet() {
-  return json_({ ok: true, info: 'Dienstplan-Schnittstelle. Bitte die App verwenden.' });
+  return json_({ ok: true, info: 'Dienstplan-Schnittstelle. Bitte die App verwenden.', version: WEBAPP.VERSION });
 }
 
 function doPost(e) {

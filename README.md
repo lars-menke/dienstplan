@@ -18,6 +18,8 @@ Handy (diese App, GitHub Pages)  →  Apps Script (Schnittstelle)  →  Google S
 | `config.js` | Link zur Apps-Script-Schnittstelle (`…/exec`) |
 | `manifest.webmanifest`, `*.png` | Name und Icon für den Startbildschirm |
 | `sw.js` | hält die App-Dateien vor (schneller Start, öffnet auch offline) |
+| `apps-script/` | Kopie der Apps-Script-Dateien (`Dienstplan-Sync.gs`, `WebApp.gs`). Sie laufen im Apps-Script-Projekt am Sheet, nicht hier |
+| `docs/` | Spezifikationen (V1, V2) und Design-Entwürfe |
 
 ## Zugang
 

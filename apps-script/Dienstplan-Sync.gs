@@ -70,6 +70,8 @@ const CONFIG = {
   },
 
   PREFIX_ABGESAGT: '❌ ABGESAGT: ',
+  // erste Zeile der Kalenderbeschreibung (V2, Kapitel 4.3)
+  CATEGORY_LINE_PREFIX: 'Kategorie: ',
   PREFIX_VERSCHOBEN: '↪️ VERSCHOBEN',
 
   // Google-Kalender-Farben: 1 Lavendel, 2 Salbei, 3 Weintraube, 4 Flamingo,
@@ -108,6 +110,7 @@ function onOpen(e) {
       .addSeparator()
       .addItem('🔑 Zugangscode erstellen…', 'createAccessCode')
       .addItem('🔑 Zugangscodes anzeigen / sperren…', 'manageAccessCodes')
+      .addItem('🔑 Rolle eines Zugangscodes ändern…', 'changeAccessCodeRole')
       .addItem('📱 Link der App-Schnittstelle anzeigen', 'showWebAppUrl')
       .addSeparator()
       .addItem('🧹 Cleanup: NICHT-Sheet-Termine AB Datum löschen…', 'menu_cleanupNonSheetFromDate')
@@ -353,8 +356,8 @@ function deleteRowEvent_(ctx, rowIndex, rec) {
 /** Legt den Termin an oder aktualisiert ihn. Gibt die EventId zurück. */
 function upsertEvent_(ctx, rowIndex, rec, status, verschobenAuf) {
   const { start, end, isAllDay } = buildEventTimes_(rec);
-  const payload = buildEventResource_(rec, start, end, isAllDay, ctx.categories.byName, status, verschobenAuf);
-  const newHash = computeHash_(hashInput_(payload, isAllDay));
+  const payload = buildEventResource_(rec, start, end, isAllDay, ctx.categories, status, verschobenAuf);
+  const newHash = computeHash_(hashInput_(payload, isAllDay, categoryInfo_(rec, ctx.categories)));
   const existing = rec.eventId ? ctx.calEvents.get(rec.eventId) : null;
 
   // unverändert und im Kalender vorhanden -> nichts tun
@@ -554,7 +557,7 @@ function importCalendarToSheet_(from, to, dryRun) {
       // Hash so berechnen, wie der Sync es tun würde -> nächster Sync ändert nichts
       const rec = rowToRecord_(row, map);
       const { start, end, isAllDay } = buildEventTimes_(rec);
-      const payload = buildEventResource_(rec, start, end, isAllDay, categories.byName, CONFIG.STATUS.AKTIV, null);
+      const payload = buildEventResource_(rec, start, end, isAllDay, categories, CONFIG.STATUS.AKTIV, null);
 
       // Marker setzen: ab jetzt gehört der Termin zur Liste
       if ((ev.description || '') !== payload.description) {
@@ -562,7 +565,7 @@ function importCalendarToSheet_(from, to, dryRun) {
       }
 
       row[idx(CONFIG.COL_EVENT_ID)] = ev.id;
-      row[idx(CONFIG.COL_HASH)] = computeHash_(hashInput_(payload, isAllDay));
+      row[idx(CONFIG.COL_HASH)] = computeHash_(hashInput_(payload, isAllDay, categoryInfo_(rec, categories)));
       row[idx(CONFIG.COL_STATUS)] = CONFIG.STATUS.AKTIV;
       newRows.push(row);
       Logger.log('Übernommen: ' + buildEventInfo_(ev));
@@ -609,13 +612,15 @@ function eventToRow_(ev, map, width, colorToCategory) {
     set(CONFIG.COL_END_TIME, formatTime_(e));
   }
 
-  set(CONFIG.COL_DESCRIPTION, stripMarker_(ev.description || ''));
+  const descParts = stripCategoryLine_(stripMarker_(ev.description || ''));
+  set(CONFIG.COL_DESCRIPTION, descParts.rest);
   set(CONFIG.COL_LOCATION, ev.location || '');
 
   const rrule = (ev.recurrence || []).find(l => /^RRULE:/i.test(l));
   if (rrule) set(CONFIG.COL_RECURRENCE, rrule);
 
-  if (ev.colorId && colorToCategory[ev.colorId]) set(CONFIG.COL_CATEGORY, colorToCategory[ev.colorId]);
+  if (descParts.category) set(CONFIG.COL_CATEGORY, descParts.category);
+  else if (ev.colorId && colorToCategory[ev.colorId]) set(CONFIG.COL_CATEGORY, colorToCategory[ev.colorId]);
 
   return row;
 }
@@ -1031,9 +1036,16 @@ function normalizeStatus_(v) {
    HILFSFUNKTIONEN (Kategorien -> Farben)
    ========================= */
 
-/** byName: kategorie (klein) -> colorId, byColor: colorId -> Kategoriename, names: alle Kategorien */
+/**
+ * Kategorien aus dem Blatt "Categories".
+ * byName:    kategorie (klein) -> colorId
+ * byColor:   colorId -> Kategoriename
+ * canonical: kategorie (klein) -> Schreibweise aus dem Blatt
+ * names:     alle Kategorienamen (Format der Live-App)
+ * list:      [{ name, colorId }]
+ */
 function loadCategories_() {
-  const result = { byName: {}, byColor: {}, names: [] };
+  const result = { byName: {}, byColor: {}, canonical: {}, names: [], list: [] };
   const sheet = getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
   if (!sheet) return result;
 
@@ -1050,7 +1062,9 @@ function loadCategories_() {
     const colorId = (values[i][idxCol] || '').toString().trim();
     if (!cat || !colorId) continue;
     result.byName[cat.toLowerCase()] = colorId;
+    result.canonical[cat.toLowerCase()] = cat;
     result.names.push(cat);
+    result.list.push({ name: cat, colorId: parseInt(colorId, 10) || colorId });
     if (!result.byColor[colorId]) result.byColor[colorId] = cat;
   }
   return result;
@@ -1060,15 +1074,24 @@ function loadCategories_() {
    HILFSFUNKTIONEN (Termin bauen)
    ========================= */
 
-function buildEventResource_(rec, start, end, isAllDay, categoryColorMap, status, verschobenAuf) {
+/** Kategorie eines Termins: Name (Schreibweise aus dem Blatt "Categories") und Farbe. */
+function categoryInfo_(rec, categories) {
+  const raw = (rec.category || '').toString().trim();
+  if (!raw) return { name: '', colorId: '' };
+  const key = raw.toLowerCase();
+  const c = categories || {};
+  return {
+    name: (c.canonical && c.canonical[key]) || raw,
+    colorId: (c.byName && c.byName[key]) || '',
+  };
+}
+
+function buildEventResource_(rec, start, end, isAllDay, categories, status, verschobenAuf) {
   const S = CONFIG.STATUS;
+  const cat = categoryInfo_(rec, categories);
   let summary = rec.subject;
   let note = '';
-  let colorId = '';
-
-  if (rec.category && categoryColorMap) {
-    colorId = categoryColorMap[rec.category.toLowerCase()] || '';
-  }
+  let colorId = cat.colorId;
 
   if (status === S.ABGESAGT) {
     summary = CONFIG.PREFIX_ABGESAGT + summary;
@@ -1083,8 +1106,13 @@ function buildEventResource_(rec, start, end, isAllDay, categoryColorMap, status
     colorId = CONFIG.COLOR_VERSCHOBEN;
   }
 
-  const baseDesc = (rec.description || '').trim();
-  const desc = note ? (baseDesc ? `${note}\n\n${baseDesc}` : note) : baseDesc;
+  // Reihenfolge im Kalender: Kategorie-Zeile, Status-Hinweis, Beschreibung, Marker
+  const parts = [];
+  if (cat.name) parts.push(`${CONFIG.CATEGORY_LINE_PREFIX}${cat.name}`);
+  if (note) parts.push(note);
+  const baseDesc = stripCategoryLine_(rec.description || '').rest;
+  if (baseDesc) parts.push(baseDesc);
+  const desc = parts.join('\n\n');
 
   const resource = {
     summary,
@@ -1107,8 +1135,10 @@ function buildEventResource_(rec, start, end, isAllDay, categoryColorMap, status
   return resource;
 }
 
-function hashInput_(payload, isAllDay) {
+function hashInput_(payload, isAllDay, cat) {
   return {
+    category: (cat && cat.name) || '',
+    categoryColorId: (cat && cat.colorId) || '',
     summary: payload.summary,
     description: payload.description || '',
     location: payload.location || '',
@@ -1134,6 +1164,19 @@ function appendMarker_(description, marker) {
 
 function stripMarker_(description) {
   return (description || '').toString().split(CONFIG.SYNC_MARKER).join('').trim();
+}
+
+/** Trennt eine führende Zeile "Kategorie: …" ab. → { category, rest } */
+function stripCategoryLine_(description) {
+  const d = (description || '').toString().trim();
+  const prefix = CONFIG.CATEGORY_LINE_PREFIX;
+  if (!d.startsWith(prefix)) return { category: '', rest: d };
+  const nl = d.indexOf('\n');
+  const line = nl === -1 ? d : d.slice(0, nl);
+  return {
+    category: line.slice(prefix.length).trim(),
+    rest: nl === -1 ? '' : d.slice(nl + 1).trim(),
+  };
 }
 
 function buildEventTimes_(rec) {

@@ -106,6 +106,8 @@ Ein Eintrag pro Code:
 ### 4.1 Speicherort
 Die Kategorien stehen weiterhin im Blatt **`Categories`** mit den Spalten `Category` und `ColorId`. Die App liest und schreibt nur über die Schnittstelle, und nur Admins dürfen ändern.
 
+**Einführung (Stand 06.11.2026):** `DataSheet` hatte bisher keine Spalte `Category`, und es gab kein Blatt `Categories`. Das Sheet-Menü **„🏷️ Kategorien einrichten“** legt beides an: das Blatt mit Kopfzeile `Category · ColorId · Farbe`, einem Startvorschlag (Übungsdienst, Gruppendienst, Ausbildung, Besprechung, Versammlung, Veranstaltung), einer Auswahlliste für die erlaubten Farben und farbiger Vorschau; dazu in `DataSheet` die Spalte `Category` mit Auswahlliste aus dem Blatt. Ein vorhandenes Blatt wird nicht überschrieben.
+
 ### 4.2 Farben
 Erlaubt sind die Google-Kalender-Terminfarben. **Mandarine (6) und Graphit (8) sind reserviert** für „Verschoben“ und „Abgesagt“ und lassen sich nicht auswählen.
 
@@ -314,7 +316,8 @@ Bleibt wie im Entwurf (rote Vollfläche) und unabhängig vom Theme.
 - `beta/` bekommt einen **eigenen Service Worker** (`beta/sw.js`, Cache-Name `dienstplan-beta-v1`, Scope `./`). Der spezifischere Scope gewinnt gegenüber dem Live-Service-Worker.
 - `beta/manifest.webmanifest` mit Name „Dienstplan Beta“, damit man beide nebeneinander auf dem Homescreen unterscheiden kann.
 - `localStorage` ist geteilt, weil beide unter derselben Domain laufen. Der Zugangscode gilt also für beide Versionen, und das ist gewollt.
-- **Die Live-App bleibt unverändert** bis zur Freigabe. Backend-Änderungen müssen deshalb **abwärtskompatibel** sein: Die alte App darf durch `role`, das neue `categories`-Format usw. nicht kaputtgehen. Siehe Etappe 1.
+- **Ausnahme (vorgezogen, 06.11.2026):** Die Live-App blendet schon jetzt je Rolle aus, was nicht erlaubt ist: Lesen ohne „+ Termin“ und ohne Aktionen im Detail (nur Hinweis + [Schließen]), [Löschen] und kompletter Sync nur für Admin, Rolle neben dem Namen in „Weitere Aktionen“.
+- **Die Live-App bleibt ansonsten unverändert** bis zur Freigabe. Backend-Änderungen müssen deshalb **abwärtskompatibel** sein: Die alte App darf durch `role`, das neue `categories`-Format usw. nicht kaputtgehen. Siehe Etappe 1.
 
 ---
 

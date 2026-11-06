@@ -262,7 +262,7 @@ function setupCategories() {
     return !(rs.length === 1 && rs[0].getA1Notation() === colorRange.getA1Notation());
   });
   const colorRules = ids.map(id => SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(`=$B2=${id}`)
+    .whenFormulaSatisfied(`=IFERROR(VALUE($B2)=${id},FALSE)`)
     .setBackground(CONFIG.CATEGORY_COLOR_HEX[id])
     .setFontColor(['5'].includes(id) ? '#1b1b1b' : '#ffffff')
     .setRanges([colorRange])

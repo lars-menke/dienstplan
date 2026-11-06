@@ -108,6 +108,16 @@ Die Kategorien stehen weiterhin im Blatt **`Categories`** mit den Spalten `Categ
 
 **Einführung (Stand 06.11.2026):** `DataSheet` hatte bisher keine Spalte `Category`, und es gab kein Blatt `Categories`. Das Sheet-Menü **„🏷️ Kategorien einrichten“** legt beides an: das Blatt mit Kopfzeile `Category · ColorId · Farbe`, einem Startvorschlag (Übungsdienst, Gruppendienst, Ausbildung, Besprechung, Versammlung, Veranstaltung), einer Auswahlliste für die erlaubten Farben und farbiger Vorschau; dazu in `DataSheet` die Spalte `Category` mit Auswahlliste aus dem Blatt. Ein vorhandenes Blatt wird nicht überschrieben.
 
+**Festgelegte Kategorien (06.11.2026):** bewusst nur drei.
+
+| Kategorie | Farbe | Beispiele |
+|---|---|---|
+| Übung | Tomate (11) | 1. Gruppe, Übungsdienst, Atemschutz, Maschinist, Ausbildung |
+| Besprechung | Pfau (7) | Ortskommando, Stadtkommando, Gruppenführer-Dienstbesprechung |
+| Tradition | Banane (5) | Himmelfahrt, Gildefest, Jahreshauptversammlung, Volkstrauertag |
+
+Termine, die in keine Kategorie passen, bleiben ohne. Das Sheet-Menü **„🏷️ Kategorien vorschlagen und eintragen…“** schlägt die Kategorie anhand von Stichwörtern im Titel vor (`CONFIG.CATEGORY_RULES`, Besprechung vor Übung), zeigt eine Vorschau und trägt auf Knopfdruck nur bei Terminen ohne Kategorie ein.
+
 ### 4.2 Farben
 Erlaubt sind die Google-Kalender-Terminfarben. **Mandarine (6) und Graphit (8) sind reserviert** für „Verschoben“ und „Abgesagt“ und lassen sich nicht auswählen.
 

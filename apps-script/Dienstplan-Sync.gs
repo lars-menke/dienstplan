@@ -92,12 +92,25 @@ const CONFIG = {
   },
   // Startvorschlag beim ersten Einrichten – im Blatt frei änderbar
   DEFAULT_CATEGORIES: [
-    ['Übungsdienst', 11],
-    ['Gruppendienst', 7],
-    ['Ausbildung', 2],
-    ['Besprechung', 1],
-    ['Versammlung', 3],
-    ['Veranstaltung', 5],
+    ['Übung', 11],       // Tomate
+    ['Besprechung', 7],  // Pfau
+    ['Tradition', 5],    // Banane
+  ],
+  // Erster Startvorschlag (06.11.2026). Steht er noch unverändert und ungenutzt
+  // im Blatt, wird er durch DEFAULT_CATEGORIES ersetzt.
+  OLD_DEFAULT_CATEGORIES: [
+    ['Übungsdienst', 11], ['Gruppendienst', 7], ['Ausbildung', 2],
+    ['Besprechung', 1], ['Versammlung', 3], ['Veranstaltung', 5],
+  ],
+
+  // Vorschläge anhand des Titels (Groß-/Kleinschreibung egal).
+  // Reihenfolge zählt: Die erste passende Kategorie gewinnt.
+  // Besprechung steht vor Übung, damit "Gruppenführer-Dienstbesprechung" nicht bei Übung landet.
+  CATEGORY_RULES: [
+    { category: 'Besprechung', words: ['kommando', 'besprechung', 'gruppenführer', 'sitzung'] },
+    { category: 'Übung', words: ['übung', 'uebung', 'gruppe', 'ausbildung', 'atemschutz', 'maschinist', 'funk', 'dienstabend'] },
+    { category: 'Tradition', words: ['himmelfahrt', 'gilde', 'jahreshauptversammlung', 'jhv', 'volkstrauertag', 'schützen',
+      'umzug', 'kranz', 'weihnacht', 'feier', 'ehrung', 'jubiläum', 'fest', 'schaffermahl', 'kameradschaft'] },
   ],
 
   DEFAULT_DURATION_MIN: 60,
@@ -125,6 +138,7 @@ function onOpen(e) {
       .addSeparator()
       .addItem('Sheet einrichten (Spalten, Dropdown, Farben)', 'setupSheet')
       .addItem('🏷️ Kategorien einrichten', 'setupCategories')
+      .addItem('🏷️ Kategorien vorschlagen und eintragen…', 'previewCategorySuggestions')
       .addItem('Kalender-IDs anzeigen (Log)', 'showCalendarIds')
       .addSeparator()
       .addItem('⏱ Automatischen Sync einschalten (alle 15 Min.)', 'enableAutoSync')
@@ -282,6 +296,168 @@ function setupCategories() {
       : 'Kategorien geprüft: Blatt „Categories“ formatiert, Spalte „Category“ mit Auswahlliste ergänzt.',
     12
   );
+}
+
+/* =========================
+   KATEGORIEN VORSCHLAGEN (anhand des Titels)
+   ========================= */
+
+/**
+ * Sorgt dafür, dass Blatt "Categories" und Spalte "Category" da sind und alle
+ * Kategorien aus CATEGORY_RULES im Blatt stehen. Ersetzt den ersten
+ * Startvorschlag, wenn er noch unverändert und ungenutzt ist.
+ */
+function ensureCategoryBasics_() {
+  const ss = getSs_();
+  if (!ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME) || getHeaderMap_(getSheet_())[CONFIG.COL_CATEGORY.toLowerCase()] == null) {
+    setupCategories();
+  }
+  const catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
+  const last = catSheet.getLastRow();
+  const current = last >= 2
+    ? catSheet.getRange(2, 1, last - 1, 2).getValues().filter(r => String(r[0]).trim())
+    : [];
+
+  // alter Startvorschlag unverändert + von keinem Termin genutzt → ersetzen
+  const sig = rows => rows.map(r => `${String(r[0]).trim()}|${String(r[1]).trim()}`).join(';');
+  const dataSheet = getSheet_();
+  const catCol = getHeaderMap_(dataSheet)[CONFIG.COL_CATEGORY.toLowerCase()];
+  const unused = catCol == null || !dataSheet.getDataRange().getValues().slice(1)
+    .some(row => String(row[catCol] || '').trim());
+  if (current.length && sig(current) === sig(CONFIG.OLD_DEFAULT_CATEGORIES) && unused) {
+    catSheet.getRange(2, 1, last - 1, 2).clearContent();
+    catSheet.getRange(2, 1, CONFIG.DEFAULT_CATEGORIES.length, 2).setValues(CONFIG.DEFAULT_CATEGORIES.map(r => r.slice()));
+    current.length = 0;
+    CONFIG.DEFAULT_CATEGORIES.forEach(r => current.push(r));
+  }
+
+  // fehlende Kategorien aus den Regeln ergänzen
+  const have = new Set(current.map(r => String(r[0]).trim().toLowerCase()));
+  const missing = CONFIG.CATEGORY_RULES
+    .map(rule => rule.category)
+    .filter(name => !have.has(name.toLowerCase()))
+    .map(name => {
+      const def = CONFIG.DEFAULT_CATEGORIES.find(d => d[0] === name);
+      return [name, def ? def[1] : ''];
+    });
+  if (missing.length) {
+    const start = Math.max(catSheet.getLastRow(), 1) + 1;
+    catSheet.getRange(start, 1, missing.length, 2).setValues(missing);
+  }
+}
+
+/** Kategorie-Vorschlag für einen Titel oder '' */
+function suggestCategory_(subject) {
+  const t = (subject || '').toString().toLowerCase();
+  const rule = CONFIG.CATEGORY_RULES.find(r => r.words.some(w => t.includes(w)));
+  return rule ? rule.category : '';
+}
+
+/** Vorschläge für alle Termine ohne Kategorie (Status ≠ GELÖSCHT). */
+function computeCategorySuggestions_() {
+  const sheet = getSheet_();
+  const map = getHeaderMap_(sheet);
+  const catIdx = map[CONFIG.COL_CATEGORY.toLowerCase()];
+  const values = sheet.getDataRange().getValues();
+  const result = { matches: [], unmatched: {}, perCategory: {}, alreadySet: 0, catIdx };
+
+  for (let i = 1; i < values.length; i++) {
+    const rec = rowToRecord_(values[i], map);
+    if (!rec.subject) continue;
+    if (normalizeStatus_(rec.status) === CONFIG.STATUS.GELOESCHT) continue;
+    if (rec.category) { result.alreadySet++; continue; }
+
+    const cat = suggestCategory_(rec.subject);
+    if (cat) {
+      result.matches.push({ row: i + 1, category: cat });
+      const pc = result.perCategory[cat] = result.perCategory[cat] || { count: 0, titles: {} };
+      pc.count++;
+      pc.titles[rec.subject] = (pc.titles[rec.subject] || 0) + 1;
+    } else {
+      result.unmatched[rec.subject] = (result.unmatched[rec.subject] || 0) + 1;
+    }
+  }
+  return result;
+}
+
+/** Menü „🏷️ Kategorien vorschlagen und eintragen…“: Vorschau mit Knopf zum Eintragen. */
+function previewCategorySuggestions() {
+  ensureCategoryBasics_();
+  const r = computeCategorySuggestions_();
+  const list = titles => Object.entries(titles)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'de'))
+    .map(([t, n]) => `<li>${escapeHtml_(t)}${n > 1 ? ` <span class="n">× ${n}</span>` : ''}</li>`)
+    .join('');
+
+  const blocks = CONFIG.CATEGORY_RULES.map(rule => {
+    const pc = r.perCategory[rule.category];
+    return `<h3>${escapeHtml_(rule.category)} <span class="n">${pc ? pc.count : 0} Termine</span></h3>` +
+      (pc ? `<ul>${list(pc.titles)}</ul>` : '<p class="n">keine Treffer</p>');
+  }).join('');
+  const unmatchedCount = Object.values(r.unmatched).reduce((a, b) => a + b, 0);
+
+  const html = HtmlService.createHtmlOutput(`
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 13px; color: #1b1b1b; margin: 0; }
+      h3 { margin: 14px 0 4px; font-size: 14px; }
+      ul { margin: 0; padding-left: 18px; columns: 2; }
+      li { margin: 1px 0; break-inside: avoid; }
+      .n { color: #777; font-weight: normal; font-size: 12px; }
+      .box { max-height: 300px; overflow: auto; border: 1px solid #ddd; border-radius: 6px; padding: 4px 10px 10px; }
+      .sum { margin-bottom: 8px; }
+      #msg { margin-top: 10px; font-weight: bold; }
+      button { padding: 8px 14px; margin-top: 10px; }
+    </style>
+    <div class="sum">
+      <b>${r.matches.length}</b> Termine bekommen einen Vorschlag,
+      <b>${unmatchedCount}</b> bleiben ohne Kategorie,
+      <b>${r.alreadySet}</b> haben schon eine.
+    </div>
+    <div class="box">
+      ${blocks}
+      <h3>Ohne Treffer <span class="n">${unmatchedCount} Termine – bleiben leer</span></h3>
+      ${unmatchedCount ? `<ul>${list(r.unmatched)}</ul>` : '<p class="n">keine</p>'}
+    </div>
+    <p class="n">Eingetragen wird nur bei Terminen ohne Kategorie. Bereits gesetzte Kategorien bleiben unverändert.
+      Der Kalender wird beim nächsten Sync aktualisiert (Farbe + Zeile „Kategorie: …“).</p>
+    <button id="go" ${r.matches.length ? '' : 'disabled'}>${r.matches.length} Vorschläge eintragen</button>
+    <div id="msg"></div>
+    <script>
+      document.getElementById('go').onclick = function () {
+        var b = this; b.disabled = true; b.textContent = 'Wird eingetragen…';
+        google.script.run
+          .withSuccessHandler(function (m) { b.textContent = 'Erledigt'; document.getElementById('msg').textContent = m; })
+          .withFailureHandler(function (e) { b.disabled = false; b.textContent = 'Nochmal versuchen'; document.getElementById('msg').textContent = e.message; })
+          .applyCategorySuggestions();
+      };
+    </script>`).setWidth(640).setHeight(560);
+
+  SpreadsheetApp.getUi().showModalDialog(html, '🏷️ Kategorien vorschlagen');
+}
+
+/** Trägt die Vorschläge ein (vom Dialog aufgerufen). Rechnet frisch, schreibt die Spalte in einem Rutsch. */
+function applyCategorySuggestions() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('Gerade läuft ein Sync. Bitte gleich nochmal versuchen.');
+  try {
+    ensureCategoryBasics_();
+    const r = computeCategorySuggestions_();
+    if (!r.matches.length) return 'Keine Termine zum Eintragen gefunden.';
+
+    const sheet = getSheet_();
+    const lastRow = sheet.getLastRow();
+    const range = sheet.getRange(2, r.catIdx + 1, lastRow - 1, 1);
+    const vals = range.getValues();
+    r.matches.forEach(m => { vals[m.row - 2][0] = m.category; });
+    range.setValues(vals);
+
+    const parts = Object.entries(r.perCategory).map(([c, pc]) => `${c}: ${pc.count}`).join(', ');
+    const msg = `${r.matches.length} Kategorien eingetragen (${parts}). Der Kalender wird beim nächsten Sync aktualisiert.`;
+    Logger.log(msg);
+    return msg;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Auswahlliste für die Spalte Category: Werte aus Categories!A2:A (leer erlaubt). */

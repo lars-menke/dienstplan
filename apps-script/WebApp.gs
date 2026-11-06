@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '2.0 (Etappe 1)',
+  VERSION: '2.1 (Etappe 1 + Code-Übersicht)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -383,7 +383,7 @@ function migrateCodesV2() {
  * Macht einen Code zum Admin.
  * Im Editor: Ohne Namen wird der einzige vorhandene persönliche Code genommen.
  * Gibt es mehrere, eine Zeile wie  setAdmin('Lars')  in eine Hilfsfunktion schreiben
- * oder im Sheet-Menü „🔑 Rolle eines Zugangscodes ändern…“ nutzen.
+ * oder im Sheet-Menü „🔑 Zugangscodes verwalten…“ die Rolle ändern.
  */
 function setAdmin(name) {
   const store = loadCodeStore_();
@@ -478,75 +478,208 @@ function createCodeFromMenu(name, role) {
   return { name: r.entry.name, roleLabel: ROLES[r.entry.role].label, pretty: formatCode_(r.code), link: r.link };
 }
 
-/** Menü „🔑 Zugangscodes anzeigen / sperren…“ */
+/**
+ * Menü „🔑 Zugangscodes verwalten…“: Übersicht aller Codes mit
+ * Rolle ändern, Sperren/Entsperren und Löschen (nur gesperrte Codes).
+ * Die Codes selbst sind nicht gespeichert (nur der Hash) und daher nicht sichtbar.
+ */
 function manageAccessCodes() {
-  const ui = SpreadsheetApp.getUi();
-  const store = loadCodeStore_();
-  if (store == null) { ui.alert('Bitte zuerst im Apps-Script-Editor migrateCodesV2() ausführen.'); return; }
-  if (!store.length) { ui.alert('Noch keine Zugangscodes. Über „Zugangscode erstellen…“ anlegen.'); return; }
-
-  const resp = ui.prompt(
-    '🔑 Zugangscodes',
-    `${codeListText_(store)}\n\nZum Sperren bzw. Entsperren den Namen eingeben (oder Abbrechen):`,
-    ui.ButtonSet.OK_CANCEL
-  );
-  if (resp.getSelectedButton() !== ui.Button.OK) return;
-
-  try {
-    const msg = withCodeStore_(list => {
-      const entry = findCodeByName_(list, resp.getResponseText());
-      if (!entry) throw new Error('Kein persönlicher Code mit diesem Namen gefunden.');
-      const block = !entry.blocked;
-      updateCodeEntry_(list, entry, { blocked: block ? new Date().toISOString() : false });
-      return block
-        ? `„${entry.name}“ ist gesperrt. Die App fragt dort beim nächsten Öffnen nach einem neuen Code.`
-        : `„${entry.name}“ ist wieder freigegeben.`;
-    });
-    ui.alert(msg);
-  } catch (e) {
-    ui.alert(errMsg_(e));
+  if (loadCodeStore_() == null) {
+    SpreadsheetApp.getUi().alert('Bitte zuerst im Apps-Script-Editor migrateCodesV2() ausführen.');
+    return;
   }
+
+  const html = HtmlService.createHtmlOutput(`
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; color: #1b1b1b; }
+      .bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
+      #msg { min-height: 18px; font-weight: bold; }
+      #msg.err { color: #b00; } #msg.ok { color: #2e7d32; }
+      table { width: 100%; border-collapse: collapse; }
+      th { text-align: left; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #ddd; padding: 6px 4px; }
+      td { border-bottom: 1px solid #eee; padding: 6px 4px; vertical-align: middle; }
+      tr.blocked td { color: #999; background: #fafafa; }
+      tr.blocked .name { text-decoration: line-through; }
+      .name { font-weight: bold; }
+      .sub { font-size: 11px; color: #777; }
+      .hint { font-family: monospace; white-space: nowrap; }
+      .badge { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: bold; background: #eee; }
+      .badge.blocked { background: #ffcdd2; color: #8e1c16; }
+      .badge.active { background: #e8f5e9; color: #2e7d32; }
+      select, button { font-size: 12px; padding: 4px 6px; }
+      button { cursor: pointer; white-space: nowrap; }
+      button.danger { color: #b00; }
+      button.confirm { background: #b00; color: #fff; border: 1px solid #b00; }
+      .actions { white-space: nowrap; text-align: right; }
+      .note { margin-top: 10px; font-size: 11px; color: #777; }
+    </style>
+    <div class="bar">
+      <div id="msg"></div>
+      <button id="new">＋ Neuer Zugangscode</button>
+    </div>
+    <table>
+      <thead><tr><th>Name</th><th>Rolle</th><th>Status</th><th>Code</th><th>Erstellt</th><th>Zuletzt genutzt</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="7">Lade…</td></tr></tbody>
+    </table>
+    <div class="note">
+      Die vollständigen Codes werden aus Sicherheitsgründen nicht gespeichert, nur die ersten und letzten 4 Zeichen.
+      Hat jemand seinen Code verloren: sperren, löschen und neu erstellen.
+      Löschen geht nur bei gesperrten Codes. Der letzte Admin kann weder gesperrt noch herabgestuft werden.
+    </div>
+    <script>
+      var ROLES = { read: 'Lesen', write: 'Schreiben', admin: 'Admin' };
+      var pendingDelete = null;
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+      function msg(text, isErr) {
+        var m = document.getElementById('msg');
+        m.textContent = text || '';
+        m.className = isErr ? 'err' : 'ok';
+      }
+      function busy(on) {
+        Array.prototype.forEach.call(document.querySelectorAll('button, select'), function (el) { el.disabled = on; });
+      }
+      function call(fn, args, okText) {
+        busy(true);
+        var runner = google.script.run
+          .withSuccessHandler(function (list) { busy(false); render(list); msg(okText || ''); })
+          .withFailureHandler(function (e) { busy(false); msg(e.message, true); });
+        runner[fn].apply(runner, args);
+      }
+
+      function render(list) {
+        pendingDelete = null;
+        var rows = document.getElementById('rows');
+        if (!list.length) { rows.innerHTML = '<tr><td colspan="7">Noch keine Zugangscodes.</td></tr>'; return; }
+        rows.innerHTML = list.map(function (c) {
+          var role = c.team
+            ? '<span class="badge">Mannschaft · Lesen</span>'
+            : '<select data-id="' + c.id + '" class="role">' +
+                ['read', 'write', 'admin'].map(function (r) {
+                  return '<option value="' + r + '"' + (r === c.role ? ' selected' : '') + '>' + ROLES[r] + '</option>';
+                }).join('') + '</select>';
+          var status = c.blocked
+            ? '<span class="badge blocked">gesperrt</span><div class="sub">seit ' + esc(c.blockedAt) + '</div>'
+            : '<span class="badge active">aktiv</span>';
+          var actions = c.team ? '' :
+            (c.blocked
+              ? '<button data-id="' + c.id + '" class="unblock">Entsperren</button> ' +
+                '<button data-id="' + c.id + '" class="delete danger">Löschen</button>'
+              : '<button data-id="' + c.id + '" class="block">Sperren</button>');
+          return '<tr class="' + (c.blocked ? 'blocked' : '') + '">' +
+            '<td><span class="name">' + esc(c.name) + '</span></td>' +
+            '<td>' + role + '</td>' +
+            '<td>' + status + '</td>' +
+            '<td class="hint">' + esc(c.hint) + '</td>' +
+            '<td>' + esc(c.created) + '</td>' +
+            '<td>' + esc(c.lastUsed) + '</td>' +
+            '<td class="actions">' + actions + '</td></tr>';
+        }).join('');
+      }
+
+      document.getElementById('rows').addEventListener('change', function (e) {
+        if (!e.target.classList.contains('role')) return;
+        var name = e.target.closest('tr').querySelector('.name').textContent;
+        call('menuUpdateCode', [e.target.dataset.id, { role: e.target.value }],
+          '„' + name + '“ hat jetzt die Rolle ' + ROLES[e.target.value] + '.');
+      });
+
+      document.getElementById('rows').addEventListener('click', function (e) {
+        var b = e.target.closest('button');
+        if (!b) return;
+        var id = b.dataset.id;
+        var name = b.closest('tr').querySelector('.name').textContent;
+        if (b.classList.contains('block')) {
+          call('menuUpdateCode', [id, { blocked: true }], '„' + name + '“ ist gesperrt.');
+        } else if (b.classList.contains('unblock')) {
+          call('menuUpdateCode', [id, { blocked: false }], '„' + name + '“ ist wieder freigegeben.');
+        } else if (b.classList.contains('delete')) {
+          if (pendingDelete !== id) {
+            pendingDelete = id;
+            b.textContent = 'Wirklich löschen?';
+            b.className = 'delete confirm';
+            return;
+          }
+          call('menuDeleteCode', [id], '„' + name + '“ wurde gelöscht.');
+        }
+      });
+
+      document.getElementById('new').onclick = function () { google.script.run.createAccessCode(); };
+
+      call('menuListCodes', []);
+    </script>`).setWidth(860).setHeight(520);
+
+  SpreadsheetApp.getUi().showModalDialog(html, '🔑 Zugangscodes');
 }
 
-/** Menü „🔑 Rolle eines Zugangscodes ändern…“ */
+/** Früherer Menüpunkt „Rolle ändern…“ – führt jetzt in dieselbe Übersicht. */
 function changeAccessCodeRole() {
-  const ui = SpreadsheetApp.getUi();
-  const store = loadCodeStore_();
-  if (store == null) { ui.alert('Bitte zuerst im Apps-Script-Editor migrateCodesV2() ausführen.'); return; }
-
-  const who = ui.prompt('🔑 Rolle ändern', `${codeListText_(store)}\n\nFür welchen Namen?`, ui.ButtonSet.OK_CANCEL);
-  if (who.getSelectedButton() !== ui.Button.OK) return;
-
-  const roleResp = ui.prompt('🔑 Rolle ändern', 'Neue Rolle:\n1 = Lesen\n2 = Schreiben\n3 = Admin', ui.ButtonSet.OK_CANCEL);
-  if (roleResp.getSelectedButton() !== ui.Button.OK) return;
-  const role = { '1': 'read', '2': 'write', '3': 'admin' }[roleResp.getResponseText().trim()];
-  if (!role) { ui.alert('Bitte 1, 2 oder 3 eingeben.'); return; }
-
-  try {
-    const msg = withCodeStore_(list => {
-      const entry = findCodeByName_(list, who.getResponseText());
-      if (!entry) throw new Error('Kein persönlicher Code mit diesem Namen gefunden.');
-      updateCodeEntry_(list, entry, { role });
-      return `„${entry.name}“ hat jetzt die Rolle ${ROLES[role].label}.`;
-    });
-    ui.alert(msg);
-  } catch (e) {
-    ui.alert(errMsg_(e));
-  }
+  manageAccessCodes();
 }
 
-function codeListText_(store) {
-  const fmt = iso => (iso ? Utilities.formatDate(new Date(iso), CONFIG.TIMEZONE, 'dd.MM.yyyy') : 'nie');
+/** Für den Dialog: alle Codes ohne Hash, sortiert (Mannschaft, aktiv, gesperrt). */
+function menuListCodes() {
+  const store = loadCodeStore_();
+  if (store == null) throw new Error('Bitte zuerst migrateCodesV2() ausführen.');
+  const fmt = iso => (iso ? Utilities.formatDate(new Date(iso), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm') : 'nie');
+
   return store
     .slice()
-    .sort((a, b) => (b.team - a.team) || a.name.localeCompare(b.name))
-    .map(c => {
-      const role = c.team ? 'Mannschaft (Lesen)' : (ROLES[c.role] ? ROLES[c.role].label : c.role);
-      const state = c.blocked ? ' · GESPERRT' : '';
-      return `• ${c.name} – ${role}${state} · ${c.hint} · zuletzt genutzt: ${fmt(c.lastUsed)}`;
-    })
-    .join('\n');
+    .sort((a, b) => (b.team - a.team) || (!!a.blocked - !!b.blocked) || a.name.localeCompare(b.name, 'de'))
+    .map(c => ({
+      id: c.id,
+      name: c.name,
+      role: c.team ? 'read' : normalizeRole_(c.role),
+      team: !!c.team,
+      hint: prettyHint_(c.hint),
+      blocked: !!c.blocked,
+      blockedAt: c.blocked ? fmt(c.blocked) : '',
+      created: fmt(c.created),
+      lastUsed: fmt(c.lastUsed),
+    }));
 }
+
+/** Für den Dialog: Rolle ändern oder sperren/entsperren. changes = { role } oder { blocked: true|false } */
+function menuUpdateCode(id, changes) {
+  withCodeStore_(list => {
+    const entry = list.find(c => c.id === id);
+    if (!entry) throw new Error('Diesen Code gibt es nicht mehr. Bitte die Übersicht neu öffnen.');
+    if (entry.team) throw new Error('Der Mannschafts-Code kann hier nicht geändert werden.');
+
+    const next = {};
+    if (changes && changes.role !== undefined) {
+      if (!ROLES[changes.role]) throw new Error('Unbekannte Rolle.');
+      next.role = changes.role;
+    }
+    if (changes && changes.blocked !== undefined) {
+      next.blocked = changes.blocked ? new Date().toISOString() : false;
+    }
+    updateCodeEntry_(list, entry, next);
+  });
+  return menuListCodes();
+}
+
+/** Für den Dialog: gesperrten Code endgültig entfernen. */
+function menuDeleteCode(id) {
+  withCodeStore_(list => {
+    const idx = list.findIndex(c => c.id === id);
+    if (idx === -1) throw new Error('Diesen Code gibt es nicht mehr. Bitte die Übersicht neu öffnen.');
+    if (!list[idx].blocked) throw new Error('Nur gesperrte Codes können gelöscht werden. Bitte zuerst sperren.');
+    list.splice(idx, 1);
+  });
+  return menuListCodes();
+}
+
+/** "K7QM…H2XP" → "K7QM-····-····-····-H2XP" (wie im Design, V2 Kapitel 8.9) */
+function prettyHint_(hint) {
+  const m = /^([A-Z0-9]{4})…([A-Z0-9]{4})$/.exec(hint || '');
+  return m ? `${m[1]}-····-····-····-${m[2]}` : (hint || '');
+}
+
 
 /* =========================
    AKTIONEN

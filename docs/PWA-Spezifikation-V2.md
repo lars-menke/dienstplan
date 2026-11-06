@@ -92,6 +92,7 @@ Ein Eintrag pro Code:
 - Weil nur der Hash gespeichert wird, ist der **vollständige Code nur direkt nach dem Erstellen sichtbar**. Gleich danach zeigt die App den Anmelde-Link zum Teilen an.
 - `lastUsed` höchstens einmal pro Stunde schreiben, damit nicht jede Anfrage die Script-Eigenschaften anfasst.
 - Das Sheet-Menü „🔑 Zugangscode erstellen…“ bleibt als Notfallweg erhalten und bekommt die Rollenauswahl.
+- **Sheet-Menü „🔑 Zugangscodes verwalten…“** (umgesetzt in Etappe 1): Übersicht aller Codes mit Name, Rolle, Status, Code-Hinweis, erstellt und zuletzt genutzt. Dort lassen sich Rollen ändern, Codes sperren und entsperren sowie **gesperrte Codes löschen**. Löschen geht nur bei gesperrten Codes, der letzte aktive Admin kann weder gesperrt noch herabgestuft werden. Den vollständigen Code zeigt auch diese Übersicht nicht, weil er nicht gespeichert ist.
 
 ### 3.2 Mannschafts-Code
 - Ein gemeinsamer, nicht personalisierter Code mit Rolle `read`.

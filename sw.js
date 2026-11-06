@@ -1,7 +1,7 @@
 // Service Worker: hält die App-Dateien vor, damit sie schnell startet
 // und auch ohne Netz öffnet. Termine kommen immer frisch vom Server.
 // Bei jeder Änderung an den App-Dateien die Versionsnummer erhöhen.
-const CACHE = 'dienstplan-v2';
+const CACHE = 'dienstplan-v3';
 const FILES = [
   './',
   'index.html',

@@ -79,6 +79,27 @@ const CONFIG = {
   COLOR_ABGESAGT: '8',
   COLOR_VERSCHOBEN: '6',
 
+  // Kategorien (V2, Kapitel 4). Mandarine (6) und Graphit (8) sind für
+  // "Verschoben" und "Abgesagt" reserviert und nicht wählbar.
+  CATEGORY_COLORS: {
+    1: 'Lavendel', 2: 'Salbei', 3: 'Weintraube', 4: 'Flamingo', 5: 'Banane',
+    7: 'Pfau', 9: 'Heidelbeere', 10: 'Basilikum', 11: 'Tomate',
+  },
+  // Hintergrundfarben für die Anzeige im Blatt "Categories"
+  CATEGORY_COLOR_HEX: {
+    1: '#7986cb', 2: '#33b679', 3: '#8e24aa', 4: '#e67c73', 5: '#f6bf26',
+    7: '#039be5', 9: '#3f51b5', 10: '#0b8043', 11: '#d50000',
+  },
+  // Startvorschlag beim ersten Einrichten – im Blatt frei änderbar
+  DEFAULT_CATEGORIES: [
+    ['Übungsdienst', 11],
+    ['Gruppendienst', 7],
+    ['Ausbildung', 2],
+    ['Besprechung', 1],
+    ['Versammlung', 3],
+    ['Veranstaltung', 5],
+  ],
+
   DEFAULT_DURATION_MIN: 60,
   SYNC_MARKER: '#Dienstplan 2026',
   // Schutz beim Cleanup: jeder Termin, dessen Beschreibung das enthält
@@ -103,6 +124,7 @@ function onOpen(e) {
       .addItem('📥 Kalender-Termine in Liste übernehmen…', 'menu_importCalendarToSheet')
       .addSeparator()
       .addItem('Sheet einrichten (Spalten, Dropdown, Farben)', 'setupSheet')
+      .addItem('🏷️ Kategorien einrichten', 'setupCategories')
       .addItem('Kalender-IDs anzeigen (Log)', 'showCalendarIds')
       .addSeparator()
       .addItem('⏱ Automatischen Sync einschalten (alle 15 Min.)', 'enableAutoSync')
@@ -138,6 +160,8 @@ function setupSheet() {
   const map = ensureRequiredColumns_();
   applyStatusDropdown_(sheet, map);
   applyConditionalFormatting_(sheet, map);
+  const catIdx = map[CONFIG.COL_CATEGORY.toLowerCase()];
+  if (catIdx != null) applyCategoryDropdown_(sheet, catIdx + 1);
   toast_('Sheet eingerichtet: Spalten geprüft, Status-Dropdown und Farben gesetzt.', 10);
 }
 
@@ -186,6 +210,93 @@ function ensureRequiredColumns_() {
   }
 
   return map;
+}
+
+/**
+ * Menü „🏷️ Kategorien einrichten“ – bereitet die Einführung der Kategorien vor:
+ *  1. Blatt "Categories" anlegen (Category · ColorId · Farbe) mit Startvorschlag,
+ *     Auswahlliste für die Farbe und farbiger Vorschau. Ein vorhandenes Blatt
+ *     wird nicht überschrieben, nur Kopfzeile und Formatierung ergänzt.
+ *  2. Spalte "Category" in DataSheet anlegen, mit Auswahlliste aus dem Blatt "Categories".
+ * Mehrfaches Ausführen schadet nicht.
+ */
+function setupCategories() {
+  const ss = getSs_();
+  let catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
+  const isNew = !catSheet;
+  if (isNew) catSheet = ss.insertSheet(CONFIG.CATEGORY_SHEET_NAME);
+
+  // Kopfzeile
+  catSheet.getRange(1, 1, 1, 3).setValues([['Category', 'ColorId', 'Farbe']]).setFontWeight('bold');
+  catSheet.setFrozenRows(1);
+
+  // Startvorschlag nur bei leerem Blatt
+  if (catSheet.getLastRow() < 2) {
+    const rows = CONFIG.DEFAULT_CATEGORIES.map(([name, id]) => [name, id]);
+    catSheet.getRange(2, 1, rows.length, 2).setValues(rows);
+  }
+
+  const maxRows = Math.max(catSheet.getMaxRows(), 50);
+  if (catSheet.getMaxRows() < maxRows) catSheet.insertRowsAfter(catSheet.getMaxRows(), maxRows - catSheet.getMaxRows());
+  const body = maxRows - 1;
+
+  // ColorId: nur erlaubte Farben (ohne 6 und 8)
+  const ids = Object.keys(CONFIG.CATEGORY_COLORS);
+  catSheet.getRange(2, 2, body, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(ids, true)
+      .setAllowInvalid(false)
+      .setHelpText(ids.map(id => `${id} = ${CONFIG.CATEGORY_COLORS[id]}`).join(', ') +
+        '. Mandarine (6) und Graphit (8) sind für „Verschoben“ und „Abgesagt“ reserviert.')
+      .build()
+  );
+
+  // Farbe: Name aus der ColorId (Formel) + farbiger Hintergrund
+  const names = ids.map(id => `${id},"${CONFIG.CATEGORY_COLORS[id]}"`).join(',');
+  catSheet.getRange(2, 3, body, 1).setFormulaR1C1(
+    `=IF(RC[-1]="","",IFERROR(SWITCH(VALUE(RC[-1]),${names}),"nicht erlaubt"))`
+  );
+  const colorRange = catSheet.getRange(2, 3, body, 1);
+  const otherRules = catSheet.getConditionalFormatRules().filter(r => {
+    const rs = r.getRanges();
+    return !(rs.length === 1 && rs[0].getA1Notation() === colorRange.getA1Notation());
+  });
+  const colorRules = ids.map(id => SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(`=$B2=${id}`)
+    .setBackground(CONFIG.CATEGORY_COLOR_HEX[id])
+    .setFontColor(['5'].includes(id) ? '#1b1b1b' : '#ffffff')
+    .setRanges([colorRange])
+    .build());
+  catSheet.setConditionalFormatRules(otherRules.concat(colorRules));
+  catSheet.setColumnWidth(1, 180);
+  catSheet.setColumnWidth(3, 120);
+
+  // DataSheet: Spalte Category mit Auswahlliste
+  const sheet = getSheet_();
+  const catIdx = ensureColumn_(sheet, CONFIG.COL_CATEGORY);
+  applyCategoryDropdown_(sheet, catIdx + 1);
+
+  toast_(
+    isNew
+      ? 'Kategorien eingerichtet: Blatt „Categories“ mit Startvorschlag angelegt, Spalte „Category“ mit Auswahlliste ergänzt.'
+      : 'Kategorien geprüft: Blatt „Categories“ formatiert, Spalte „Category“ mit Auswahlliste ergänzt.',
+    12
+  );
+}
+
+/** Auswahlliste für die Spalte Category: Werte aus Categories!A2:A (leer erlaubt). */
+function applyCategoryDropdown_(sheet, col) {
+  const catSheet = getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
+  if (!catSheet || !col) return;
+  const rows = sheet.getMaxRows() - 1;
+  if (rows < 1) return;
+  sheet.getRange(2, col, rows, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInRange(catSheet.getRange('A2:A'), true)
+      .setAllowInvalid(false)
+      .setHelpText('Kategorie aus dem Blatt „Categories“ wählen oder leer lassen.')
+      .build()
+  );
 }
 
 /** Legt eine Spalte rechts neben dem letzten Header an, falls sie fehlt. Gibt den 0-basierten Index zurück. */

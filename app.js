@@ -9,7 +9,7 @@ const KEY_CODE = 'dienstplan.code';
 const KEY_DATA = 'dienstplan.data';
 
 const state = {
-  events: [], categories: [], today: '', user: '',
+  events: [], categories: [], today: '', user: '', role: '',
   tab: 'upcoming', q: '', busy: false, loadedAt: null,
 };
 
@@ -20,6 +20,23 @@ const backdropEl = $('#backdrop');
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------- Rollen ----------
+ * Die Rolle kommt vom Server (read · write · admin). Der Server prüft jede
+ * Aktion selbst; hier wird nur ausgeblendet, was nicht erlaubt ist.
+ * Unbekannte Rolle (ältere Schnittstelle) → alles anzeigen wie bisher.
+ */
+const ROLE_RANK = { read: 1, write: 2, admin: 3 };
+const ROLE_LABEL = { read: 'Lesen', write: 'Schreiben', admin: 'Admin' };
+
+function can(role) {
+  const have = ROLE_RANK[state.role];
+  return have === undefined ? true : have >= ROLE_RANK[role];
+}
+
+function applyRoleUi() {
+  $('#btnNew').hidden = !can('write');
+}
 
 /* ---------- Speicher (fehlertolerant) ---------- */
 
@@ -65,11 +82,13 @@ function applyData(d) {
   state.events = d.events || [];
   state.categories = d.categories || [];
   state.today = d.today || state.today;
-  state.user = d.user || state.user;
+  state.user = d.userName || d.user || state.user;
+  state.role = d.role || state.role;
   state.loadedAt = Date.now();
+  applyRoleUi();
   store.set(KEY_DATA, JSON.stringify({
     events: state.events, categories: state.categories, today: state.today,
-    user: state.user, loadedAt: state.loadedAt,
+    user: state.user, role: state.role, loadedAt: state.loadedAt,
   }));
 }
 
@@ -149,6 +168,7 @@ function logout(message) {
   store.del(KEY_CODE);
   store.del(KEY_DATA);
   state.events = [];
+  state.role = '';
   showLogin(message);
 }
 
@@ -278,11 +298,18 @@ function openDetail(ev) {
   if (ev.status === S.ABGESAGT) info += '<div class="info">❌ Abgesagt. Der Termin bleibt im Kalender sichtbar.</div>';
   if (ev.recurring) info += '<div class="info">🔁 Serientermin – Änderungen gelten für die ganze Serie.</div>';
 
-  const actions = ev.status === S.AKTIV
-    ? `<button class="btn primary" data-act="edit">Bearbeiten</button>
-       <div class="row"><button class="btn warn" data-act="move">Verschieben</button><button class="btn" data-act="cancel">Absagen</button></div>`
-    : `<button class="btn primary" data-act="reactivate">Wieder aktivieren</button>
-       <button class="btn" data-act="edit">Bearbeiten</button>`;
+  let actions;
+  if (!can('write')) {
+    info += '<div class="info">👀 Du kannst Termine ansehen. Änderungen macht, wer den Dienstplan pflegt.</div>';
+    actions = '<button class="btn" data-act="close">Schließen</button>';
+  } else {
+    actions = ev.status === S.AKTIV
+      ? `<button class="btn primary" data-act="edit">Bearbeiten</button>
+         <div class="row"><button class="btn warn" data-act="move">Verschieben</button><button class="btn" data-act="cancel">Absagen</button></div>`
+      : `<button class="btn primary" data-act="reactivate">Wieder aktivieren</button>
+         <button class="btn" data-act="edit">Bearbeiten</button>`;
+    if (can('admin')) actions += '\n<button class="btn danger" data-act="delete">Löschen</button>';
+  }
 
   openSheet(`
     <h2>${esc(ev.subject)}</h2>
@@ -293,12 +320,12 @@ function openDetail(ev) {
     ${info}
     <div class="actions">
       ${actions}
-      <button class="btn danger" data-act="delete">Löschen</button>
     </div>
     ${ev.lastChange ? `<div class="small">Letzte Änderung: ${esc(ev.lastChange)}</div>` : ''}
   `);
 
   const handlers = {
+    close: closeSheet,
     edit: () => openForm(ev),
     move: () => openMove(ev),
     cancel: () => confirmAct({
@@ -439,15 +466,16 @@ function openForm(ev) {
 function openMore() {
   openSheet(`
     <h2>Weitere Aktionen</h2>
-    ${state.user ? `<p class="lead">Angemeldet als <b>${esc(state.user)}</b></p>` : ''}
+    ${state.user ? `<p class="lead">Angemeldet als <b>${esc(state.user)}</b>${
+      ROLE_LABEL[state.role] ? ` · ${ROLE_LABEL[state.role]}` : ''}</p>` : ''}
     <div class="actions">
-      <button class="btn" id="xSync">Alle Termine jetzt synchronisieren</button>
+      ${can('admin') ? '<button class="btn" id="xSync">Alle Termine jetzt synchronisieren</button>' : ''}
       <button class="btn" id="xLogout">Abmelden</button>
       <button class="btn" id="xBack">Schließen</button>
     </div>
-    <div class="small">Normalerweise nicht nötig: Jede Änderung in der App wird sofort in den Kalender übertragen.
-      Der komplette Sync ist nur für Änderungen gedacht, die direkt im Sheet gemacht wurden.</div>`);
-  $('#xSync').onclick = e => mutate(e.currentTarget, 'syncAll');
+    ${can('admin') ? `<div class="small">Normalerweise nicht nötig: Jede Änderung in der App wird sofort in den Kalender übertragen.
+      Der komplette Sync ist nur für Änderungen gedacht, die direkt im Sheet gemacht wurden.</div>` : ''}`);
+  if ($('#xSync')) $('#xSync').onclick = e => mutate(e.currentTarget, 'syncAll');
   $('#xLogout').onclick = () => confirmAct({
     title: 'Abmelden?',
     text: 'Auf diesem Gerät musst du danach den Zugangscode neu eingeben.',
@@ -520,6 +548,7 @@ if ('serviceWorker' in navigator) {
   } catch (e) { /* egal */ }
 
   showApp();
+  applyRoleUi();
   if (state.events.length) render();
   load();
 })();

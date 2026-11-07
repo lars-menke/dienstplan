@@ -41,6 +41,9 @@
   --offline-ink: #5c4a00;
   --role-admin-bg: #1b1b1b;
   --role-admin-ink: #ffffff;
+  --role-write-bg: #e3f2fd;
+  --role-write-ink: #0d47a1;
+  --dashed: #c9c7c1;
   --switch-off: #c9c7c1;
   --backdrop: rgba(0, 0, 0, .42);
   --shadow-today: 0 4px 14px rgba(198, 40, 40, .08);
@@ -89,6 +92,9 @@
   --offline-ink: #f2e58a;
   --role-admin-bg: #e8ff2b;
   --role-admin-ink: #0b1530;
+  --role-write-bg: #16305e;
+  --role-write-ink: #9cc4ff;
+  --dashed: #33447a;
   --switch-off: #33447a;
   --backdrop: rgba(3, 7, 18, .62);
   --shadow-today: none;
@@ -454,6 +460,74 @@ fieldset.group-set legend { padding: 0 0 8px; font-size: 13px; font-weight: 600;
 .opt.selected .grow { font-weight: 600; }
 .opt:focus-within { outline: 3px solid var(--focus); outline-offset: -3px; }
 .opt input[type="radio"]:focus-visible { outline: none; }
+
+/* ---------- Verwaltung (Etappe 3) ---------- */
+
+.page { min-height: 100vh; min-height: 100dvh; background: var(--bg); }
+.page-head {
+  position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: calc(18px + env(safe-area-inset-top)) 16px 14px;
+}
+.page-head-row { display: flex; align-items: center; gap: 12px; }
+.page-head h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.page-body {
+  padding: 16px 16px calc(120px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 14px;
+}
+.page-body .group { padding-top: 6px; }
+
+.opt.cat-row, .opt.code-row { min-height: 60px; gap: 14px; }
+.opt .grow b { font-size: 16px; font-weight: 600; }
+.code-row.is-blocked b { color: var(--off-title); text-decoration: line-through; }
+.swatch { width: 28px; height: 28px; border-radius: 50%; flex: none; }
+
+.btn.dashed {
+  border: 1.5px dashed var(--dashed); background: transparent; font-size: 15px;
+}
+
+.swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; justify-items: center; }
+.swatch-btn {
+  width: 46px; height: 46px; border-radius: 50%; border: 0; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.swatch-btn[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text); }
+.swatch-btn.reserved {
+  background: transparent; border: 2px dashed var(--c); color: var(--muted); cursor: not-allowed;
+}
+.swatch-btn:focus-visible { border-radius: 50%; }
+.color-name { color: var(--text); }
+
+.sheet-foot.column { flex-direction: column; }
+.row-btns { display: flex; gap: 10px; }
+.center-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.btn.danger:disabled { color: var(--off-title); opacity: 1; }
+
+.rbadge {
+  height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; flex: none; white-space: nowrap;
+  background: var(--off-bg); color: var(--text-2);
+}
+.rbadge.admin { background: var(--role-admin-bg); color: var(--role-admin-ink); }
+.rbadge.write { background: var(--role-write-bg); color: var(--role-write-ink); }
+.rbadge.inline { align-self: flex-start; }
+
+.team-card {
+  padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.team-top { display: flex; align-items: center; gap: 10px; }
+.team-top h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 700; }
+.mono { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: .04em; color: var(--chip-ink); }
+
+.code-big {
+  margin: 0; padding: 16px 10px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line);
+  font: 700 clamp(17px, 5.4vw, 24px)/1.3 var(--mono); letter-spacing: .04em; text-align: center; color: var(--text);
+  overflow-wrap: anywhere; user-select: all;
+}
+.linklike {
+  border: 0; background: none; padding: 0; color: var(--accent-text); text-decoration: underline;
+  font: inherit; font-size: inherit;
+}
 
 /* ---------- Toast ---------- */
 

@@ -268,13 +268,8 @@ function setupCategories() {
   // Farbe: Name aus der ColorId (einfache Formel je Zeile) + farbiger Hintergrund.
   // Das Trennzeichen hängt von der Sheet-Sprache ab (Deutsch ";" – Englisch ","),
   // sonst zeigt das Sheet #ERROR!.
-  const sep = formulaSeparator_(ss);
-  const choices = [];
-  for (let id = 1; id <= 11; id++) choices.push(`"${CONFIG.CATEGORY_COLORS[id] || 'reserviert'}"`);
   const formulas = [];
-  for (let r = 2; r <= maxRows; r++) {
-    formulas.push([`=IF(B${r}=""${sep}""${sep}IFERROR(CHOOSE(VALUE(B${r})${sep}${choices.join(sep)})${sep}"nicht erlaubt"))`]);
-  }
+  for (let r = 2; r <= maxRows; r++) formulas.push([categoryColorFormula_(ss, r)]);
   catSheet.getRange(2, 3, body, 1).setFormulas(formulas);
   const colorRange = catSheet.getRange(2, 3, body, 1);
   const otherRules = catSheet.getConditionalFormatRules().filter(r => {
@@ -464,6 +459,14 @@ function applyCategorySuggestions() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Formel für die Spalte "Farbe" im Blatt Categories (Zeile r). */
+function categoryColorFormula_(ss, r) {
+  const sep = formulaSeparator_(ss);
+  const choices = [];
+  for (let id = 1; id <= 11; id++) choices.push(`"${CONFIG.CATEGORY_COLORS[id] || 'reserviert'}"`);
+  return `=IF(B${r}=""${sep}""${sep}IFERROR(CHOOSE(VALUE(B${r})${sep}${choices.join(sep)})${sep}"nicht erlaubt"))`;
 }
 
 /**

@@ -21,10 +21,11 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '2.4 (Etappe 1 + Code-Übersicht + Kategorien)',
+  VERSION: '3.0 (Etappe 3: Verwaltung in der App)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
+  BETA_URL: 'https://lars-menke.github.io/dienstplan/beta/',
 
   COL_GEAENDERT: 'Letzte Änderung',
 
@@ -82,12 +83,28 @@ function userInfo_(user) {
 function handleAction_(action, data, user) {
   checkTimezone_();
   switch (action) {
-    case 'getData': return getAppData_(user.name);
+    case 'getData': return withAdminInfo_(getAppData_(user.name), user);
     case 'saveEvent': return saveEvent_(data, user.name);
     case 'setStatus': return setStatus_(data, user.name);
     case 'syncAll': return syncAll_(user.name);
+    // Verwaltung (V2, Kapitel 5.2) – nur Admin
+    case 'saveCategory': return withAdminInfo_(saveCategory_(data, user.name), user);
+    case 'deleteCategory': return withAdminInfo_(deleteCategory_(data, user.name), user);
+    case 'listCodes': return listCodes_(user);
+    case 'createCode': return createCodeApi_(data, user);
+    case 'updateCode': return updateCode_(data, user);
+    case 'rotateTeamCode': return rotateTeamCode_(user);
     default: throw new Error(`Unbekannte Aktion: ${action}`);
   }
+}
+
+/** Für Admins zusätzlich die Anzahl der Zugangscodes (Anzeige in „Weitere Aktionen“). */
+function withAdminInfo_(result, user) {
+  if (user.role === 'admin') {
+    const store = loadCodeStore_();
+    result.codeCount = store ? store.length : 0;
+  }
+  return result;
 }
 
 function json_(obj) {
@@ -108,6 +125,12 @@ function requiredRole_(action, data) {
     case 'setStatus':
       return normalizeStatus_(data.status) === CONFIG.STATUS.LOESCHEN ? 'admin' : 'write';
     case 'syncAll':
+    case 'saveCategory':
+    case 'deleteCategory':
+    case 'listCodes':
+    case 'createCode':
+    case 'updateCode':
+    case 'rotateTeamCode':
       return 'admin';
     default:
       return 'admin';
@@ -300,8 +323,12 @@ function createCode_(name, role, team) {
       lastUsed: null,
     };
     store.push(entry);
-    return { entry, code, link: `${WEBAPP.APP_URL}#code=${code}` };
+    return { entry, code, link: codeLink_(code), betaLink: codeLink_(code, true) };
   });
+}
+
+function codeLink_(code, beta) {
+  return `${beta ? WEBAPP.BETA_URL : WEBAPP.APP_URL}#code=${code}`;
 }
 
 function activeAdmins_(store) {
@@ -449,6 +476,8 @@ function createAccessCode() {
         <p><b>Am einfachsten:</b> diesen Link aufs Handy schicken. Wer ihn öffnet, ist direkt angemeldet:</p>
         <input id="rLink" readonly style="width:100%;padding:8px;font-size:13px;box-sizing:border-box" onclick="this.select()">
         <p><button id="copy">Link kopieren</button></p>
+        <p style="margin-bottom:4px">Für die Testversion (Beta):</p>
+        <input id="rBeta" readonly style="width:100%;padding:8px;font-size:13px;box-sizing:border-box" onclick="this.select()">
         <p style="color:#a00">Der Code wird nur jetzt angezeigt. Link nur an diese eine Person geben – er funktioniert wie ein Passwort.</p>
       </div>
     </div>
@@ -461,13 +490,13 @@ function createAccessCode() {
           .withSuccessHandler(function (r) {
             $('form').style.display = 'none'; $('result').style.display = 'block';
             $('rName').textContent = r.name; $('rRole').textContent = r.roleLabel;
-            $('rCode').textContent = r.pretty; $('rLink').value = r.link;
+            $('rCode').textContent = r.pretty; $('rLink').value = r.link; $('rBeta').value = r.betaLink;
           })
           .withFailureHandler(function (e) { $('go').disabled = false; $('err').textContent = e.message; })
           .createCodeFromMenu($('name').value, role);
       };
       $('copy').onclick = function () { $('rLink').select(); document.execCommand('copy'); this.textContent = 'Kopiert ✓'; };
-    </script>`).setWidth(480).setHeight(470);
+    </script>`).setWidth(480).setHeight(540);
 
   SpreadsheetApp.getUi().showModalDialog(html, '🔑 Zugangscode erstellen');
 }
@@ -475,7 +504,7 @@ function createAccessCode() {
 /** Wird vom Dialog aufgerufen (google.script.run). */
 function createCodeFromMenu(name, role) {
   const r = createCode_(name, role, false);
-  return { name: r.entry.name, roleLabel: ROLES[r.entry.role].label, pretty: formatCode_(r.code), link: r.link };
+  return { name: r.entry.name, roleLabel: ROLES[r.entry.role].label, pretty: formatCode_(r.code), link: r.link, betaLink: r.betaLink };
 }
 
 /**
@@ -680,6 +709,252 @@ function prettyHint_(hint) {
   return m ? `${m[1]}-····-····-····-${m[2]}` : (hint || '');
 }
 
+
+/* =========================
+   VERWALTUNG: KATEGORIEN (V2, Kapitel 4.4 + 4.5)
+   ========================= */
+
+const RESERVED_COLORS = ['6', '8'];
+const MAX_CATEGORY_NAME = 40;
+
+/** Neu anlegen (ohne oldName) oder ändern/umbenennen. */
+function saveCategory_(data, userName) {
+  return withWebLock_(() => {
+    const ss = getSs_();
+    let catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
+    if (!catSheet) { setupCategories(); catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME); }
+
+    const name = (data.name || '').toString().trim();
+    const colorId = String(data.colorId || '').trim();
+    const oldName = (data.oldName || '').toString().trim();
+    if (!name) throw new Error('Bitte einen Namen eingeben.');
+    if (name.length > MAX_CATEGORY_NAME) throw new Error(`Der Name ist zu lang (höchstens ${MAX_CATEGORY_NAME} Zeichen).`);
+    if (RESERVED_COLORS.includes(colorId)) throw new Error('Mandarine und Graphit sind für „Verschoben“ und „Abgesagt“ reserviert.');
+    if (!CONFIG.CATEGORY_COLORS[colorId]) throw new Error('Bitte eine Farbe wählen.');
+
+    const rows = categoryRows_(catSheet);
+    const existing = oldName ? rows.find(r => r.name.toLowerCase() === oldName.toLowerCase()) : null;
+    if (oldName && !existing) throw new Error('Diese Kategorie gibt es nicht mehr. Bitte neu laden.');
+    if (rows.some(r => r !== existing && r.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error('Diese Kategorie gibt es schon.');
+    }
+
+    let affected = 0;
+    if (existing) {
+      catSheet.getRange(existing.row, 1, 1, 2).setValues([[name, Number(colorId)]]);
+      if (existing.name !== name) affected = renameCategoryInData_(existing.name, name);
+      const used = categoryUsage_()[name.toLowerCase()] || 0;
+      affected = Math.max(affected, used);
+    } else {
+      const r = Math.max(catSheet.getLastRow(), 1) + 1;
+      catSheet.getRange(r, 1, 1, 2).setValues([[name, Number(colorId)]]);
+      if (!catSheet.getRange(r, 3).getFormula()) catSheet.getRange(r, 3).setFormula(categoryColorFormula_(ss, r));
+    }
+
+    let message = existing ? 'Gespeichert.' : 'Kategorie angelegt.';
+    if (existing && affected > 0) {
+      scheduleCalendarRefresh_();
+      message = 'Gespeichert. Der Kalender wird in den nächsten Minuten aktualisiert.';
+    }
+    return Object.assign({ message }, getAppData_(userName));
+  });
+}
+
+/** Löschen nur, wenn kein Termin (Status ≠ GELÖSCHT) die Kategorie nutzt. */
+function deleteCategory_(data, userName) {
+  return withWebLock_(() => {
+    const catSheet = getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
+    const name = (data.name || '').toString().trim();
+    const row = catSheet ? categoryRows_(catSheet).find(r => r.name.toLowerCase() === name.toLowerCase()) : null;
+    if (!row) throw new Error('Diese Kategorie gibt es nicht mehr. Bitte neu laden.');
+
+    const count = categoryUsage_()[name.toLowerCase()] || 0;
+    if (count > 0) {
+      throw new Error(`Wird von ${count} ${count === 1 ? 'Termin' : 'Terminen'} genutzt – erst die Termine umstellen.`);
+    }
+    catSheet.deleteRow(row.row);
+    return Object.assign({ message: `Kategorie „${row.name}“ gelöscht.` }, getAppData_(userName));
+  });
+}
+
+/** Zeilen im Blatt Categories: [{ row, name, colorId }] */
+function categoryRows_(catSheet) {
+  const last = catSheet.getLastRow();
+  if (last < 2) return [];
+  return catSheet.getRange(2, 1, last - 1, 2).getValues()
+    .map((v, i) => ({ row: i + 2, name: String(v[0] || '').trim(), colorId: String(v[1] || '').trim() }))
+    .filter(r => r.name);
+}
+
+/** Anzahl Termine je Kategorie (klein geschrieben), Status ≠ GELÖSCHT. */
+function categoryUsage_() {
+  const sheet = getSheet_();
+  const map = getHeaderMap_(sheet);
+  const catIdx = map[CONFIG.COL_CATEGORY.toLowerCase()];
+  const usage = {};
+  if (catIdx == null) return usage;
+  sheet.getDataRange().getValues().slice(1).forEach(row => {
+    const rec = rowToRecord_(row, map);
+    if (!rec.subject || !rec.category) return;
+    if (normalizeStatus_(rec.status) === CONFIG.STATUS.GELOESCHT) return;
+    const k = rec.category.toLowerCase();
+    usage[k] = (usage[k] || 0) + 1;
+  });
+  return usage;
+}
+
+/** Benennt die Kategorie in allen Zeilen von DataSheet um. Gibt die Anzahl geänderter Zeilen zurück. */
+function renameCategoryInData_(oldName, newName) {
+  const sheet = getSheet_();
+  const catIdx = getHeaderMap_(sheet)[CONFIG.COL_CATEGORY.toLowerCase()];
+  const lastRow = sheet.getLastRow();
+  if (catIdx == null || lastRow < 2) return 0;
+  const range = sheet.getRange(2, catIdx + 1, lastRow - 1, 1);
+  const vals = range.getValues();
+  let n = 0;
+  vals.forEach(v => {
+    if (String(v[0] || '').trim().toLowerCase() === oldName.toLowerCase()) { v[0] = newName; n++; }
+  });
+  if (n) range.setValues(vals);
+  return n;
+}
+
+/**
+ * Plant einen einmaligen kompletten Sync in etwa einer Minute (V2, Kapitel 4.5),
+ * damit Farbe und Zeile „Kategorie: …“ im Kalender nachgezogen werden, ohne dass
+ * die Anfrage selbst hunderte Termine aktualisieren muss.
+ */
+function scheduleCalendarRefresh_() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'runScheduledRefresh') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('runScheduledRefresh').timeBased().after(60 * 1000).create();
+}
+
+/** Wird vom einmaligen Trigger aufgerufen. */
+function runScheduledRefresh() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'runScheduledRefresh') ScriptApp.deleteTrigger(t);
+  });
+  syncSheetToCalendar();
+}
+
+/* =========================
+   VERWALTUNG: ZUGANGSCODES (V2, Kapitel 3 + 5.2)
+   ========================= */
+
+/** Liste ohne Hash. self = der Code dieser Anfrage. */
+function listCodes_(user, extra) {
+  const store = loadCodeStore_();
+  if (store == null) throw new Error('Die Zugangscodes sind noch im alten Format. Bitte im Editor migrateCodesV2() ausführen.');
+  const codes = store
+    .slice()
+    .sort((a, b) => (b.team - a.team) || (!!a.blocked - !!b.blocked) || a.name.localeCompare(b.name, 'de'))
+    .map(c => ({
+      id: c.id,
+      name: c.name,
+      role: c.team ? 'read' : normalizeRole_(c.role),
+      team: !!c.team,
+      hint: prettyHint_(c.hint),
+      blocked: c.blocked || false,
+      created: c.created || null,
+      lastUsed: c.lastUsed || null,
+      self: c.id === user.id,
+    }));
+  return Object.assign({ codes, codeCount: codes.length }, extra || {});
+}
+
+/** { name, role } → { code, link, betaLink } nur in dieser Antwort */
+function createCodeApi_(data, user) {
+  const r = createCode_(data.name, data.role, false);
+  return listCodes_(user, {
+    message: `Zugangscode für „${r.entry.name}“ erstellt.`,
+    code: formatCode_(r.code),
+    link: r.link,
+    betaLink: r.betaLink,
+    created: { id: r.entry.id, name: r.entry.name, role: r.entry.role },
+  });
+}
+
+/**
+ * { id, name?, role?, blocked? } – ändern, sperren, entsperren.
+ * Den eigenen Code kann man weder sperren noch herabstufen; der letzte Admin bleibt Admin.
+ */
+function updateCode_(data, user) {
+  let message = 'Gespeichert.';
+  withCodeStore_(store => {
+    const entry = store.find(c => c.id === data.id);
+    if (!entry) throw new Error('Diesen Code gibt es nicht mehr. Bitte neu laden.');
+
+    const changes = {};
+    if (data.name !== undefined) {
+      const name = (data.name || '').toString().trim();
+      if (!name) throw new Error('Bitte einen Namen eingeben.');
+      if (name.length > WEBAPP.MAX_NAME_LENGTH) throw new Error(`Der Name ist zu lang (höchstens ${WEBAPP.MAX_NAME_LENGTH} Zeichen).`);
+      if (!entry.team && store.some(c => c !== entry && !c.team && c.name.toLowerCase() === name.toLowerCase())) {
+        throw new Error(`Für „${name}“ gibt es schon einen Code.`);
+      }
+      changes.name = name;
+    }
+    if (data.role !== undefined) {
+      if (!ROLES[data.role]) throw new Error('Unbekannte Rolle.');
+      if (entry.team && data.role !== 'read') throw new Error('Der Mannschafts-Code hat immer die Rolle „Lesen“.');
+      changes.role = data.role;
+    }
+    if (data.blocked !== undefined) {
+      if (entry.team) throw new Error('Der Mannschafts-Code wird nicht gesperrt, sondern neu erzeugt.');
+      changes.blocked = data.blocked ? new Date().toISOString() : false;
+    }
+
+    if (entry.id === user.id) {
+      if (changes.blocked) throw new Error('Den eigenen Code kannst du nicht sperren.');
+      if (changes.role && ROLES[changes.role].rank < ROLES[normalizeRole_(entry.role)].rank) {
+        throw new Error('Den eigenen Code kannst du nicht herabstufen.');
+      }
+    }
+
+    updateCodeEntry_(store, entry, changes);
+    if (changes.blocked) message = `„${entry.name}“ ist gesperrt.`;
+    else if (data.blocked === false) message = `„${entry.name}“ ist wieder freigegeben.`;
+    else if (changes.role) message = `„${entry.name}“ hat jetzt die Rolle ${ROLES[entry.role].label}.`;
+  });
+  return listCodes_(user, { message });
+}
+
+/** Neuer Mannschafts-Code, der alte ist sofort ungültig. Legt einen an, falls es keinen gibt. */
+function rotateTeamCode_(user) {
+  const result = withCodeStore_(store => {
+    let code;
+    let hash;
+    do {
+      code = generateCode_();
+      hash = hashCode_(code);
+    } while (store.some(c => c.hash === hash));
+
+    let entry = store.find(c => c.team);
+    const isNew = !entry;
+    if (isNew) {
+      entry = { id: newCodeId_(), name: 'Mannschaft', role: 'read', team: true, blocked: false };
+      store.push(entry);
+    }
+    Object.assign(entry, {
+      hash,
+      hint: codeHint_(code),
+      role: 'read',
+      blocked: false,
+      created: new Date().toISOString(),
+      lastUsed: null,
+    });
+    return { code, isNew };
+  });
+
+  return listCodes_(user, {
+    message: result.isNew ? 'Mannschafts-Code erzeugt.' : 'Neuer Mannschafts-Code erzeugt. Der alte funktioniert nicht mehr.',
+    code: formatCode_(result.code),
+    link: codeLink_(result.code),
+    betaLink: codeLink_(result.code, true),
+  });
+}
 
 /* =========================
    AKTIONEN

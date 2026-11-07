@@ -2,7 +2,7 @@
 // Eigener Cache, Scope ist dieser Ordner (beta/). Der spezifischere Scope
 // gewinnt gegenüber dem Service Worker der Live-App.
 // Bei jeder Änderung an den Dateien die Versionsnummer erhöhen.
-const CACHE = 'dienstplan-beta-v1';
+const CACHE = 'dienstplan-beta-v2';
 const FILES = [
   './',
   'index.html',

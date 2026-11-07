@@ -21,6 +21,7 @@ const ROLE_RANK = { read: 1, write: 2, admin: 3 };
 const state = {
   events: [], categories: [], categoryList: [], today: '', user: '', role: '',
   loadedAt: null, q: '', showPast: false, busy: false, loadError: null,
+  codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -28,6 +29,7 @@ const listEl = $('#list');
 const sheetEl = $('#sheet');
 const backdropEl = $('#backdrop');
 const appEl = $('#app');
+const pageEl = $('#page');
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -136,11 +138,12 @@ function applyData(d) {
   state.today = d.today || state.today;
   state.user = d.userName || d.user || state.user;
   state.role = d.role || state.role;
+  if (d.codeCount !== undefined) state.codeCount = d.codeCount;
   state.loadedAt = Date.now();
   state.loadError = null;
   store.set(KEY_DATA, JSON.stringify({
     events: state.events, categories: state.categories, categoryList: state.categoryList,
-    today: state.today, user: state.user, role: state.role, loadedAt: state.loadedAt,
+    today: state.today, user: state.user, role: state.role, codeCount: state.codeCount, loadedAt: state.loadedAt,
   }));
 }
 
@@ -164,7 +167,11 @@ async function load() {
   render();
 }
 
-async function mutate(btn, action, data) {
+/**
+ * Führt eine Änderung aus. onSuccess(d) ersetzt das Standardverhalten
+ * (Sheet schließen, neu zeichnen, Meldung).
+ */
+async function mutate(btn, action, data, onSuccess) {
   if (state.busy) return;
   state.busy = true;
   renderHeader();
@@ -174,8 +181,12 @@ async function mutate(btn, action, data) {
   btn.innerHTML = `<span class="spin"></span>${action === 'syncAll' ? 'Wird synchronisiert…' : 'Wird gespeichert…'}`;
   try {
     const d = await api(action, data);
-    applyData(d);
+    if (d.events) applyData(d);
+    if (d.codes) state.codes = d.codes;
+    if (d.codeCount !== undefined) state.codeCount = d.codeCount;
     state.busy = false;
+    renderHeader();
+    if (onSuccess) return onSuccess(d);
     closeSheet();
     render();
     toast(d.message || 'Gespeichert.', d.warning);
@@ -282,6 +293,7 @@ function matches(ev, q) {
 
 function render() {
   renderHeader();
+  if (state.page) renderPage();
   if (!state.loadedAt) {
     if (state.loadError) {
       listEl.innerHTML = `<div class="empty">${icon('wifiOff', 32)}<p>${esc(state.loadError.message)}</p>
@@ -429,8 +441,7 @@ function openSheet(html, opts = {}) {
   sheetEl.innerHTML = html;
   hydrateIcons(sheetEl);
   sheetEl.hidden = false;
-  appEl.inert = true;
-  appEl.setAttribute('aria-hidden', 'true');
+  setBackgroundInert(true);
   backdropEl.classList.add('open');
   requestAnimationFrame(() => sheetEl.classList.add('open'));
 
@@ -443,13 +454,20 @@ function openSheet(html, opts = {}) {
   if (scroller) scroller.scrollTop = 0;
 }
 
+/** Hintergrund (Liste bzw. Verwaltungsseite) für Tastatur und Screenreader sperren, solange ein Sheet offen ist. */
+function setBackgroundInert(on) {
+  [appEl, pageEl].forEach(el => {
+    el.inert = on;
+    if (on) el.setAttribute('aria-hidden', 'true'); else el.removeAttribute('aria-hidden');
+  });
+}
+
 function closeSheet(force) {
   if (state.busy && !force) return;
   if (!sheetEl.classList.contains('open') && sheetEl.hidden) return;
   sheetEl.classList.remove('open');
   backdropEl.classList.remove('open');
-  appEl.inert = false;
-  appEl.removeAttribute('aria-hidden');
+  setBackgroundInert(false);
   setTimeout(() => { if (!sheetEl.classList.contains('open')) { sheetEl.hidden = true; sheetEl.innerHTML = ''; } }, 260);
   restoreFocus();
 }
@@ -463,8 +481,9 @@ function restoreFocus() {
   setTimeout(() => {
     let target = el && document.contains(el) ? el : null;
     if (!target && key) target = listEl.querySelector(`.card[data-key="${CSS.escape(key)}"]`);
-    if (!target) target = $('#btnMore');
-    if (target && !appEl.hidden) target.focus({ preventScroll: true });
+    if (!target) target = state.page ? pageEl.querySelector('h1') : $('#btnMore');
+    if (state.page && target && !pageEl.contains(target)) target = pageEl.querySelector('h1');
+    if (target && (!appEl.hidden || state.page)) target.focus({ preventScroll: true });
   }, 30);
 }
 
@@ -795,7 +814,7 @@ function openMore() {
       <span class="label">Verwaltung</span>
       <div class="group-box">
         <button class="opt" type="button" data-admin="Kategorien">${icon('tags', 20)}<span class="grow">Kategorien</span><span class="count">${state.categoryList.length || ''}</span>${icon('chevronRight', 18)}</button>
-        <button class="opt" type="button" data-admin="Zugangscodes">${icon('key', 20)}<span class="grow">Zugangscodes</span>${icon('chevronRight', 18)}</button>
+        <button class="opt" type="button" data-admin="Zugangscodes">${icon('key', 20)}<span class="grow">Zugangscodes</span><span class="count">${state.codeCount || ''}</span>${icon('chevronRight', 18)}</button>
       </div>
     </div>
     <div class="stack">
@@ -811,8 +830,10 @@ function openMore() {
     setThemePref(r.value);
     sheetEl.querySelectorAll('.opt').forEach(o => o.classList.toggle('selected', o.contains(r)));
   }));
-  sheetEl.querySelectorAll('[data-admin]').forEach(b => (b.onclick = () =>
-    toast(`${b.dataset.admin} verwaltest du in der nächsten Beta-Version direkt hier. Bis dahin über das Sheet-Menü.`)));
+  sheetEl.querySelectorAll('[data-admin]').forEach(b => (b.onclick = () => {
+    closeSheet();
+    openPage(b.dataset.admin === 'Kategorien' ? 'categories' : 'codes');
+  }));
   if ($('#xSync')) $('#xSync').onclick = e => mutate(e.currentTarget, 'syncAll');
   $('#xLogout').onclick = () => confirmAct({
     title: 'Abmelden?',
@@ -821,6 +842,381 @@ function openMore() {
     onYes: () => { closeSheet(); logout(''); },
     back: openMore,
   });
+}
+
+/* ---------- Verwaltung: Seiten (V2, Kapitel 8.8 + 8.9) ---------- */
+
+const COLOR_NAMES = { 1: 'Lavendel', 2: 'Salbei', 3: 'Weintraube', 4: 'Flamingo', 5: 'Banane', 6: 'Mandarine', 7: 'Pfau', 8: 'Graphit', 9: 'Heidelbeere', 10: 'Basilikum', 11: 'Tomate' };
+// Reihenfolge im Farbraster wie im Entwurf; 6 und 8 reserviert
+const COLOR_ORDER = [11, 4, 5, 10, 2, 7, 9, 1, 3];
+const ROLE_INFO = {
+  read: { label: 'Lesen', help: 'Termine ansehen, nichts ändern' },
+  write: { label: 'Schreiben', help: 'Anlegen, bearbeiten, absagen, verschieben' },
+  admin: { label: 'Admin', help: 'Alles – auch löschen, Kategorien, Codes' },
+};
+
+/** Echte Google-Farbe (Farbauswahl zeigt immer die Originalfarben, V2 4.2). */
+const realColor = id => COLOR_HEX.light[String(id)] || '#9e9e9e';
+
+function openPage(name) {
+  state.page = name;
+  appEl.hidden = true;
+  pageEl.hidden = false;
+  window.scrollTo(0, 0);
+  renderPage();
+  setTimeout(() => { const h = pageEl.querySelector('h1'); if (h) h.focus(); }, 80);
+  if (name === 'codes') { state.codesError = null; loadCodes(); }
+}
+
+function closePage() {
+  state.page = null;
+  pageEl.hidden = true;
+  pageEl.innerHTML = '';
+  appEl.hidden = false;
+  render();
+  setTimeout(() => $('#btnMore').focus(), 30);
+}
+
+// Escape schließt die Verwaltungsseite (wenn kein Sheet offen ist)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && state.page && sheetEl.hidden && !state.busy) { e.preventDefault(); closePage(); }
+});
+
+function pageShell(title, body, fab) {
+  return `<header class="page-head">
+      <div class="wrap page-head-row">
+        <button class="icon-btn" type="button" id="pageBack" aria-label="Zurück">${icon('chevronLeft', 20)}</button>
+        <div class="brand"><h1 tabindex="-1">${esc(title)}</h1><p class="sync">Nur für Admins</p></div>
+      </div>
+    </header>
+    <main class="page-body wrap">${body}</main>
+    ${fab || ''}`;
+}
+
+function renderPage() {
+  if (state.page === 'categories') renderCategoriesPage();
+  if (state.page === 'codes') renderCodesPage();
+  const back = $('#pageBack');
+  if (back) back.onclick = closePage;
+}
+
+/* --- Kategorien --- */
+
+function renderCategoriesPage() {
+  const list = state.categoryList;
+  const rows = list.length
+    ? `<div class="group-box">${list.map((c, i) => `
+        <button class="opt cat-row" type="button" data-cat-i="${i}">
+          <span class="swatch" style="background:${realColor(c.colorId)}" aria-hidden="true"></span>
+          <span class="grow"><b>${esc(c.name)}</b><small>${esc(COLOR_NAMES[c.colorId] || 'ohne Farbe')} · ${c.count ? `${c.count} ${c.count === 1 ? 'Termin' : 'Termine'}` : 'nicht genutzt'}</small></span>
+          ${icon('chevronRight', 18)}
+        </button>`).join('')}</div>`
+    : `<p class="empty" style="padding:24px 0">Noch keine Kategorien.</p>`;
+
+  pageEl.innerHTML = pageShell('Kategorien', `
+    ${rows}
+    <button class="btn dashed" type="button" id="catAdd">${icon('plus', 20)}Kategorie hinzufügen</button>
+    <div class="note">${icon('info', 18)}<span>Im Google Kalender bekommt der Termin die Farbe. Zusätzlich steht „Kategorie: …“ in der ersten Zeile der Beschreibung – so sieht man sie auch in Apple Kalender und Abos.</span></div>`);
+
+  pageEl.querySelectorAll('[data-cat-i]').forEach(b => (b.onclick = () => openCategorySheet(list[+b.dataset.catI])));
+  $('#catAdd').onclick = () => openCategorySheet(null);
+}
+
+function openCategorySheet(cat) {
+  const isNew = !cat;
+  let colorId = cat ? Number(cat.colorId) : null;
+  const count = cat ? cat.count : 0;
+
+  const swatches = () => COLOR_ORDER.map(id => `
+      <button class="swatch-btn" type="button" data-color="${id}" aria-pressed="${id === colorId}" aria-label="${COLOR_NAMES[id]}" style="background:${realColor(id)}">${id === colorId ? icon('check', 22, 3) : ''}</button>`).join('') +
+    [6, 8].map(id => `
+      <button class="swatch-btn reserved" type="button" disabled aria-label="${COLOR_NAMES[id]} – reserviert für ${id === 6 ? 'Verschoben' : 'Abgesagt'}" style="--c:${realColor(id)}">${icon('ban', 18)}</button>`).join('');
+
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <h2 id="sheetTitle">${isNew ? 'Neue Kategorie' : 'Kategorie bearbeiten'}</h2>
+      <label class="field">Name<input id="cName" value="${esc(cat ? cat.name : '')}" maxlength="40" autocomplete="off" ${isNew ? 'data-autofocus' : ''}></label>
+      <fieldset class="group-set">
+        <legend>Farbe im Kalender · <span class="color-name" id="cColorName">${esc(COLOR_NAMES[colorId] || 'bitte wählen')}</span></legend>
+        <div class="swatches" id="cSwatches">${swatches()}</div>
+        <span class="small-note">Mandarine und Graphit sind für „Verschoben“ und „Abgesagt“ reserviert.</span>
+      </fieldset>
+      ${!isNew && count ? `<div class="note">${icon('info', 18)}<span>${count} ${count === 1 ? 'Termin nutzt' : 'Termine nutzen'} diese Kategorie. Neue Farbe und Name werden danach im Kalender nachgezogen – das kann etwas dauern.</span></div>` : ''}
+    </div>
+    <div class="sheet-foot column">
+      <div class="row-btns">
+        <button class="btn small" type="button" id="cCancel" style="flex:1">Abbrechen</button>
+        <button class="btn primary" type="button" id="cSave" style="flex:2">${isNew ? 'Anlegen' : 'Speichern'}</button>
+      </div>
+      ${isNew ? '' : `<div class="center-col">
+        <button class="btn danger" type="button" id="cDelete" ${count ? 'disabled aria-describedby="cDelHint"' : ''}>Löschen</button>
+        ${count ? '<span class="small-note" id="cDelHint">Geht erst, wenn kein Termin mehr diese Kategorie nutzt.</span>' : ''}
+      </div>`}
+    </div>`);
+
+  $('#cSwatches').addEventListener('click', e => {
+    const b = e.target.closest('[data-color]');
+    if (!b) return;
+    colorId = +b.dataset.color;
+    $('#cSwatches').innerHTML = swatches();
+    $('#cColorName').textContent = COLOR_NAMES[colorId];
+    const sel = $('#cSwatches').querySelector(`[data-color="${colorId}"]`);
+    if (sel) sel.focus();
+  });
+  $('#cCancel').onclick = () => closeSheet();
+  $('#cSave').onclick = e => {
+    const name = $('#cName').value.trim();
+    if (!name) { $('#cName').focus(); return toast('Bitte einen Namen eingeben.', true); }
+    if (!colorId) return toast('Bitte eine Farbe wählen.', true);
+    mutate(e.currentTarget, 'saveCategory', { oldName: cat ? cat.name : undefined, name, colorId });
+  };
+  const del = $('#cDelete');
+  if (del && !count) {
+    del.onclick = () => confirmAct({
+      title: 'Kategorie löschen?',
+      text: `„${cat.name}“ wird aus der Liste entfernt.`,
+      label: 'Löschen', cls: 'primary',
+      onYes: btn => mutate(btn, 'deleteCategory', { name: cat.name }),
+      back: () => openCategorySheet(cat),
+    });
+  }
+}
+
+/* --- Zugangscodes --- */
+
+async function loadCodes() {
+  state.codes = state.codes || null;
+  renderPage();
+  try {
+    const d = await api('listCodes');
+    state.codes = d.codes;
+    state.codeCount = d.codeCount;
+  } catch (e) {
+    if (e.auth) return logout(e.message);
+    if (e.forbidden) { closePage(); return toast(e.message, true); }
+    state.codesError = e.message;
+  }
+  if (state.page === 'codes') renderPage();
+}
+
+function relativeDay(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const days = Math.round((toDate(todayIso()) - toDate(toIso(d))) / 86400000);
+  if (days <= 0) return 'heute';
+  if (days === 1) return 'gestern';
+  if (days < 7) return `vor ${days} Tagen`;
+  return `am ${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+}
+
+function codeSub(c) {
+  if (c.blocked) return `gesperrt am ${new Date(c.blocked).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  if (c.self) return 'Dieses Gerät';
+  return c.lastUsed ? `zuletzt genutzt ${relativeDay(c.lastUsed)}` : 'noch nie genutzt';
+}
+
+function roleBadge(c) {
+  if (c.blocked) return '<span class="rbadge off">Gesperrt</span>';
+  if (c.role === 'admin') return '<span class="rbadge admin">Admin</span>';
+  if (c.role === 'write') return '<span class="rbadge write">Schreiben</span>';
+  return '<span class="rbadge off">Lesen</span>';
+}
+
+function renderCodesPage() {
+  let body;
+  if (!state.codes) {
+    body = state.codesError
+      ? `<div class="empty">${icon('info', 32)}<p>${esc(state.codesError)}</p><button class="btn small" type="button" id="codesRetry">${icon('refresh', 18)}Nochmal versuchen</button></div>`
+      : `<div class="loading" role="status"><span class="spin"></span>Lade Zugangscodes…</div>`;
+  } else {
+    const team = state.codes.find(c => c.team);
+    const personal = state.codes.filter(c => !c.team);
+    const teamCard = team
+      ? `<section class="team-card" aria-labelledby="teamTitle">
+          <div class="team-top"><h2 id="teamTitle">Mannschaft</h2><span class="rbadge off">Lesen</span></div>
+          <span class="mono">${esc(team.hint)}</span>
+          <span class="small-note">Gemeinsamer Code · ${team.lastUsed ? `zuletzt genutzt ${relativeDay(team.lastUsed)}` : 'noch nie genutzt'}</span>
+          <span class="small-note">Den Anmelde-Link gibt es nur direkt nach dem Erzeugen. Ist er weg, einfach neu erzeugen.</span>
+          <button class="btn small" type="button" id="teamRotate">${icon('refresh', 18)}Neu erzeugen</button>
+        </section>`
+      : `<section class="team-card" aria-labelledby="teamTitle">
+          <div class="team-top"><h2 id="teamTitle">Mannschaft</h2><span class="rbadge off">Lesen</span></div>
+          <span class="small-note">Noch kein gemeinsamer Lese-Code für die Mannschaft.</span>
+          <button class="btn small" type="button" id="teamRotate">${icon('plus', 18)}Mannschafts-Code erzeugen</button>
+        </section>`;
+
+    body = `${teamCard}
+      <h2 class="group">Persönliche Codes</h2>
+      ${personal.length ? `<div class="group-box">${personal.map(c => `
+        <button class="opt code-row${c.blocked ? ' is-blocked' : ''}" type="button" data-code-id="${esc(c.id)}">
+          <span class="grow"><b>${esc(c.name)}</b><small>${esc(codeSub(c))}</small></span>
+          ${roleBadge(c)}
+        </button>`).join('')}</div>` : '<p class="empty" style="padding:16px 0">Noch keine persönlichen Codes.</p>'}`;
+  }
+
+  pageEl.innerHTML = pageShell('Zugangscodes', body,
+    state.codes ? `<button class="fab" type="button" id="codeNew">${icon('plus', 20)}Code</button>` : '');
+
+  const retry = $('#codesRetry');
+  if (retry) retry.onclick = () => { state.codesError = null; loadCodes(); };
+  if (!state.codes) return;
+  pageEl.querySelectorAll('[data-code-id]').forEach(b => (b.onclick = () => openCodeSheet(state.codes.find(c => c.id === b.dataset.codeId))));
+  $('#codeNew').onclick = openNewCodeSheet;
+  $('#teamRotate').onclick = () => {
+    const team = state.codes.find(c => c.team);
+    if (!team) return mutate($('#teamRotate'), 'rotateTeamCode', {}, d => showCreatedCode(d, 'Mannschaft', 'read', true));
+    confirmAct({
+      title: 'Mannschafts-Code neu erzeugen?',
+      text: 'Der alte Code funktioniert danach nicht mehr. Den neuen Link musst du an alle in der Mannschaft verteilen.',
+      label: 'Neu erzeugen', cls: 'primary',
+      onYes: btn => mutate(btn, 'rotateTeamCode', {}, d => showCreatedCode(d, 'Mannschaft', 'read', true)),
+      back: () => closeSheet(),
+    });
+  };
+}
+
+function roleOptions(selected, disabledRoles = []) {
+  return ['read', 'write', 'admin'].map(r => `
+    <label class="opt ${r === selected ? 'selected' : ''}">
+      <span class="grow">${ROLE_INFO[r].label}<small>${ROLE_INFO[r].help}</small></span>
+      <input type="radio" name="role" value="${r}" ${r === selected ? 'checked' : ''} ${disabledRoles.includes(r) ? 'disabled' : ''}>
+    </label>`).join('');
+}
+
+function bindRoleOptions() {
+  sheetEl.querySelectorAll('input[name="role"]').forEach(r => (r.onchange = () =>
+    sheetEl.querySelectorAll('.opt').forEach(o => o.classList.toggle('selected', o.contains(r) && r.checked))));
+}
+
+function openNewCodeSheet() {
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <h2 id="sheetTitle">Neuer Zugangscode</h2>
+      <label class="field">Für wen?<input id="ncName" maxlength="60" autocomplete="off" data-autofocus aria-describedby="ncHint">
+        <span class="small-note" id="ncHint" style="font-weight:400">Erscheint bei „Letzte Änderung“ am Termin.</span></label>
+      <fieldset class="group-set"><legend>Rolle</legend><div class="group-box">${roleOptions('write')}</div></fieldset>
+      <div class="note">${icon('info', 18)}<span>Danach bekommst du einen Anmelde-Link zum Teilen. Der Code wird nur einmal vollständig angezeigt.</span></div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn small" type="button" id="ncCancel" style="flex:1">Abbrechen</button>
+      <button class="btn primary" type="button" id="ncOk" style="flex:2">Code erstellen</button>
+    </div>`);
+  bindRoleOptions();
+  $('#ncCancel').onclick = () => closeSheet();
+  $('#ncOk').onclick = e => {
+    const name = $('#ncName').value.trim();
+    const role = (sheetEl.querySelector('input[name="role"]:checked') || {}).value;
+    if (!name) { $('#ncName').focus(); return toast('Bitte einen Namen eingeben.', true); }
+    mutate(e.currentTarget, 'createCode', { name, role }, d => showCreatedCode(d, name, role, false));
+  };
+}
+
+/** Code einmalig groß anzeigen, Link teilen (navigator.share, sonst Kopieren). */
+function showCreatedCode(d, name, role, team) {
+  renderPage();
+  const link = d.betaLink || d.link; // Testversion: Link in die Beta
+  openSheet(`<div class="sheet-scroll">
+    ${grip}
+    <div>
+      <h2 id="sheetTitle">${team ? 'Neuer Mannschafts-Code' : 'Zugangscode erstellt'}</h2>
+      <p class="sub">${esc(name)} · ${esc(ROLE_INFO[role] ? ROLE_INFO[role].label : role)}</p>
+    </div>
+    <p class="code-big" aria-label="Code ${esc(d.code.split('').join(' '))}">${esc(d.code)}</p>
+    <div class="note warn">${icon('info', 18)}<span>Der Code wird nur jetzt angezeigt. Teile den Link nur mit ${team ? 'der Mannschaft' : 'dieser Person'} – er funktioniert wie ein Passwort.</span></div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="shareLink" data-autofocus>${icon('share', 20)}Link teilen</button>
+      <button class="btn small" type="button" id="doneLink">Fertig</button>
+    </div>
+    ${d.betaLink && d.link ? `<span class="small-note center">Der Link führt in die Testversion. Für die normale App: <button class="linklike" type="button" id="copyLive">Link der normalen App kopieren</button></span>` : ''}
+  </div>`);
+  $('#shareLink').onclick = () => shareLink(link, team);
+  $('#doneLink').onclick = () => closeSheet();
+  const cl = $('#copyLive');
+  if (cl) cl.onclick = () => copyText(d.link);
+}
+
+async function shareLink(link, team) {
+  const text = team
+    ? 'Zugang zum Dienstplan der Feuerwehr (nur lesen):'
+    : 'Dein persönlicher Zugang zum Dienstplan der Feuerwehr:';
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Dienstplan', text, url: link });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // abgebrochen
+    }
+  }
+  copyText(link);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Link kopiert.');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    sheetEl.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+    ta.remove();
+    toast(ok ? 'Link kopiert.' : 'Kopieren hat nicht geklappt.', !ok);
+  }
+}
+
+function openCodeSheet(c) {
+  if (!c) return;
+  const fmtDate = iso => (iso ? new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'nie');
+  const self = c.self;
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <div class="sheet-head">
+        <div>${roleBadge(c).replace('rbadge', 'rbadge inline')}<h2 id="sheetTitle">${esc(c.name)}</h2></div>
+        ${closeBtn()}
+      </div>
+      <div class="facts">
+        <div class="fact">${icon('key', 20)}<div><strong class="mono">${esc(c.hint)}</strong><span class="muted">erstellt am ${esc(fmtDate(c.created))} · ${c.lastUsed ? `zuletzt genutzt ${esc(relativeDay(c.lastUsed))}` : 'noch nie genutzt'}</span></div></div>
+      </div>
+      ${self ? `<div class="note">${icon('info', 18)}<span>Das ist dein eigener Code. Du kannst ihn weder sperren noch herabstufen.</span></div>` : ''}
+      ${c.blocked ? '' : `<fieldset class="group-set"><legend>Rolle</legend><div class="group-box">${roleOptions(c.role, self ? ['read', 'write'].filter(r => ROLE_RANK[r] < ROLE_RANK[c.role]) : [])}</div></fieldset>`}
+    </div>
+    <div class="sheet-foot column">
+      ${c.blocked
+        ? `<button class="btn primary" type="button" id="csUnblock">Entsperren</button>
+           <span class="small-note center">Endgültig löschen geht im Sheet-Menü „Zugangscodes verwalten“.</span>`
+        : `<button class="btn primary" type="button" id="csSave">Rolle speichern</button>
+           ${self ? '' : '<button class="btn danger" type="button" id="csBlock">Sperren</button>'}`}
+    </div>`);
+  bindClose();
+  bindRoleOptions();
+
+  const save = $('#csSave');
+  if (save) save.onclick = e => {
+    const role = (sheetEl.querySelector('input[name="role"]:checked') || {}).value;
+    if (role === c.role) return closeSheet();
+    mutate(e.currentTarget, 'updateCode', { id: c.id, role }, afterCodeChange);
+  };
+  const block = $('#csBlock');
+  if (block) block.onclick = () => confirmAct({
+    title: `„${c.name}“ sperren?`,
+    text: 'Der Code funktioniert danach nicht mehr. Entsperren geht jederzeit.',
+    label: 'Sperren', cls: 'primary',
+    onYes: btn => mutate(btn, 'updateCode', { id: c.id, blocked: true }, afterCodeChange),
+    back: () => openCodeSheet(c),
+  });
+  const unblock = $('#csUnblock');
+  if (unblock) unblock.onclick = e => mutate(e.currentTarget, 'updateCode', { id: c.id, blocked: false }, afterCodeChange);
+}
+
+function afterCodeChange(d) {
+  closeSheet();
+  renderPage();
+  toast(d.message || 'Gespeichert.');
 }
 
 /* ---------- Meldungen ---------- */

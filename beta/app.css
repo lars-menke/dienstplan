@@ -44,6 +44,8 @@
   --role-write-bg: #e3f2fd;
   --role-write-ink: #0d47a1;
   --dashed: #c9c7c1;
+  --swipe-cancel: #5a5a5a;
+  --undo-ink: #ffcdd2;
   --switch-off: #c9c7c1;
   --backdrop: rgba(0, 0, 0, .42);
   --shadow-today: 0 4px 14px rgba(198, 40, 40, .08);
@@ -95,6 +97,8 @@
   --role-write-bg: #16305e;
   --role-write-ink: #9cc4ff;
   --dashed: #33447a;
+  --swipe-cancel: #3b4a7a;
+  --undo-ink: #e8ff2b;
   --switch-off: #33447a;
   --backdrop: rgba(3, 7, 18, .62);
   --shadow-today: none;
@@ -118,6 +122,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body {
   margin: 0;
+  overscroll-behavior-y: contain; /* kein natives Pull-to-Refresh des Browsers */
   background: var(--bg);
   color: var(--text);
   font: 16px/1.4 var(--font);
@@ -517,6 +522,54 @@ fieldset.group-set legend { padding: 0 0 8px; font-size: 13px; font-weight: 600;
 }
 .tpl-chip[aria-pressed="true"] {
   border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; padding: 0 13px;
+}
+
+/* ---------- Gesten (Etappe 5, V2 8.6) ---------- */
+
+/* Karten-Wischen: Hintergrund zeigt die Aktion */
+.swipe-wrap { position: relative; border-radius: 14px; overflow: hidden; }
+.swipe-wrap .card { position: relative; z-index: 1; touch-action: pan-y; }
+.swipe-wrap.dragging .card { box-shadow: 4px 0 16px rgba(0, 0, 0, .12); }
+.swipe-bg {
+  position: absolute; inset: 0; display: flex; justify-content: space-between;
+  font-size: 14px; font-weight: 600; opacity: 0;
+}
+.swipe-wrap.dragging .swipe-bg { opacity: 1; }
+.swipe-bg span { width: 50%; display: flex; align-items: center; gap: 8px; }
+.swipe-bg .sw-move { background: var(--warn-solid); color: var(--warn-solid-ink); padding-left: 18px; }
+.swipe-bg .sw-cancel { background: var(--swipe-cancel); color: #fff; justify-content: flex-end; padding-right: 18px; }
+.swipe-wrap.dir-right .sw-cancel, .swipe-wrap.dir-left .sw-move { visibility: hidden; }
+.swipe-wrap.armed .swipe-bg span b { text-decoration: underline; text-underline-offset: 3px; }
+.swipe-hint { font-size: 12px; color: var(--muted); text-align: center; padding: 2px 0 6px; margin: 0; }
+.badge.saving .spin { width: 10px; height: 10px; border-width: 2px; }
+
+/* Pull-to-Refresh */
+.ptr { height: 0; overflow: hidden; display: flex; justify-content: center; align-items: flex-end; }
+.ptr-pill {
+  width: 40px; height: 40px; margin-bottom: 8px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line); color: var(--accent-text);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+}
+.ptr.ready .ptr-pill { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.ptr.loading .ptr-pill .ic { animation: spin .8s linear infinite; }
+
+/* Toast mit Aktion („Rückgängig“) */
+.toast.has-action {
+  display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; min-height: 56px;
+  pointer-events: auto; border-radius: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+}
+.toast.has-action .t-msg { flex: 1; line-height: 1.35; font-size: 14px; }
+.toast .t-btn {
+  height: 44px; padding: 0 14px; border: 0; border-radius: 10px; flex: none;
+  background: rgba(255, 255, 255, .14); color: var(--undo-ink); font-size: 14px; font-weight: 700;
+}
+.toast .t-btn:focus-visible { outline-color: #fff; }
+
+/* Sheet nach unten ziehen */
+.sheet.dragging { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ptr.loading .ptr-pill .ic { animation: none; }
 }
 
 /* ---------- Verwaltung (Etappe 3) ---------- */

@@ -10,6 +10,7 @@ const KEY_CODE = 'dienstplan.code';
 const KEY_DATA = 'dienstplan.beta.data';
 const KEY_THEME = 'dienstplan.theme';
 const KEY_VIEW = 'dienstplan.view';
+const KEY_SWIPE_HINT = 'dienstplan.swipeHintSeen';
 
 // Vorlagen für „Neuer Termin“ (V2 8.5) – aus config.js, sonst diese Vorgabe
 const TEMPLATES = (window.DIENSTPLAN_CONFIG && window.DIENSTPLAN_CONFIG.TEMPLATES) || [
@@ -32,6 +33,7 @@ const state = {
   loadedAt: null, q: '', showPast: false, busy: false, loadError: null,
   codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
   view: 'list', weekStart: null, selDay: null, // Wochenansicht (Etappe 4)
+  saving: {}, // Karten, die gerade per Wischen geändert werden: key → Text
 };
 
 const $ = sel => document.querySelector(sel);
@@ -355,6 +357,9 @@ function render() {
     html += `<button class="past-btn" type="button" id="pastBtn" aria-expanded="${state.showPast}">
       ${icon(state.showPast ? 'chevronDown' : 'chevronUp', 14, 2.5)}${state.showPast ? 'Vergangene ausblenden' : 'Vergangene Termine'}</button>`;
   }
+  if (ROLE_RANK[state.role] >= ROLE_RANK.write && !store.get(KEY_SWIPE_HINT)) {
+    html += `<p class="swipe-hint">Tipp: Karte nach links wischen = Absagen · nach rechts = Verschieben</p>`;
+  }
 
   if (showPast && past.length) {
     let month = '';
@@ -386,22 +391,39 @@ function render() {
   if (pb) pb.onclick = () => { state.showPast = !state.showPast; render(); if (state.showPast) listEl.scrollIntoView(); };
 }
 
+function cardKey(ev) {
+  return ev.eventId || 'r' + ev.row;
+}
+
+/** Karten wischen: nur Schreiben/Admin, nur aktive Termine, nur in der Liste. */
+function canSwipeCard(ev) {
+  return state.view === 'list' && ROLE_RANK[state.role] >= ROLE_RANK.write && ev.status === S.AKTIV && !state.saving[cardKey(ev)];
+}
+
 function cardHtml(ev, isToday) {
+  const saving = state.saving[cardKey(ev)];
   const cls = ['card'];
+  if (saving) cls.push('is-saving');
   if (ev.status === S.ABGESAGT) cls.push('is-cancelled');
   else if (ev.status === S.VERSCHOBEN) cls.push('is-moved');
   else if (isToday) cls.push('is-today');
   const meta = [timeText(ev), ev.location].filter(Boolean).map(esc).join(' · ');
   const statusWord = ev.status === S.ABGESAGT ? ', abgesagt' : ev.status === S.VERSCHOBEN ? ', verschoben' : '';
-  return `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(ev.eventId || 'r' + ev.row)}"
+  const card = `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(cardKey(ev))}"
       aria-label="${esc(`${ev.subject}, ${longDate(ev.date)}, ${timeText(ev)}${statusWord}`)}">
     <span class="tile" aria-hidden="true"><span class="wd">${esc(wdShort(ev.date))}</span><span class="d">${toDate(ev.date).getDate()}</span><span class="m">${esc(fmt(ev.date, { month: 'short' }).replace('.', ''))}</span></span>
     <span class="card-body" aria-hidden="true">
       <span class="card-title">${esc(ev.subject)}</span>
       <span class="card-meta">${meta}</span>
-      ${badgesHtml(ev, false)}
+      ${saving ? `<span class="badges"><span class="badge off saving"><span class="spin"></span>${esc(saving)}</span></span>` : badgesHtml(ev, false)}
     </span>
   </button>`;
+  if (!canSwipeCard(ev)) return card;
+  return `<div class="swipe-wrap" data-swipe="${esc(cardKey(ev))}">
+    <div class="swipe-bg" aria-hidden="true">
+      <span class="sw-move">${icon('arrowRight', 18)}<b>Verschieben</b></span>
+      <span class="sw-cancel"><b>Absagen</b>${icon('ban', 18)}</span>
+    </div>${card}</div>`;
 }
 
 function categoryBadge(ev) {
@@ -560,6 +582,218 @@ function scrollToDay(d) {
   row.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
 }
 
+/* ---------- Gesten (V2, Kapitel 8.6) ---------- */
+
+const CARD_SWIPE_RATIO = 0.35;   // Schwelle: 35 % der Kartenbreite
+const AXIS_LOCK = 10;            // ab hier wird entschieden: waagerecht oder senkrecht
+
+/* --- Karte wischen: links = Absagen (sofort, mit Rückgängig), rechts = Verschieben --- */
+
+const cardSwipe = { wrap: null, card: null, x: 0, y: 0, dx: 0, axis: null, moved: false, width: 0 };
+
+function cardSwipeStart(target, x, y) {
+  const wrap = target.closest && target.closest('.swipe-wrap');
+  if (!wrap || state.view !== 'list' || state.busy || !sheetEl.hidden) return;
+  Object.assign(cardSwipe, { wrap, card: wrap.querySelector('.card'), x, y, dx: 0, axis: null, moved: false, width: wrap.offsetWidth });
+}
+
+/** true = waagerechte Geste erkannt (dann nicht scrollen). */
+function cardSwipeMove(x, y) {
+  const c = cardSwipe;
+  if (!c.wrap) return false;
+  const dx = x - c.x, dy = y - c.y;
+  if (c.axis === null && (Math.abs(dx) > AXIS_LOCK || Math.abs(dy) > AXIS_LOCK)) {
+    c.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+    if (c.axis === 'y') { c.wrap = null; return false; } // senkrecht: normal scrollen
+    c.wrap.classList.add('dragging');
+  }
+  if (c.axis !== 'x') return false;
+  c.dx = dx;
+  c.card.style.transition = 'none';
+  c.card.style.transform = `translateX(${dx}px)`;
+  c.wrap.classList.toggle('dir-left', dx < 0);
+  c.wrap.classList.toggle('dir-right', dx > 0);
+  c.wrap.classList.toggle('armed', Math.abs(dx) >= c.width * CARD_SWIPE_RATIO);
+  return true;
+}
+
+function cardSwipeEnd() {
+  const c = cardSwipe;
+  if (!c.wrap) return;
+  const { wrap, card, dx, width } = c;
+  c.wrap = null;
+  if (c.axis !== 'x') return;
+  c.moved = true;
+  setTimeout(() => { c.moved = false; }, 350);
+
+  const ev = state.events.find(e => cardKey(e) === wrap.dataset.swipe);
+  const passed = Math.abs(dx) >= width * CARD_SWIPE_RATIO;
+  const anim = !reducedMotion();
+  const reset = () => {
+    card.style.transition = anim ? 'transform .2s ease-out' : 'none';
+    card.style.transform = '';
+    setTimeout(() => wrap.classList.remove('dragging', 'dir-left', 'dir-right', 'armed'), anim ? 200 : 0);
+  };
+  if (!passed || !ev) return reset();
+
+  store.set(KEY_SWIPE_HINT, '1');
+  if (dx < 0) {
+    // Absagen: Karte rausschieben, dann sofort speichern
+    card.style.transition = anim ? 'transform .18s ease-in' : 'none';
+    card.style.transform = `translateX(${-width}px)`;
+    setTimeout(() => quickStatus(ev, S.ABGESAGT), anim ? 180 : 0);
+  } else {
+    reset();
+    openMove(ev);
+  }
+}
+
+/**
+ * Status ohne Sheet ändern (Wischen, Rückgängig). Die Karte zeigt solange
+ * „Wird abgesagt…“, die Kopfzeile „Wird gespeichert…“.
+ */
+async function quickStatus(ev, status) {
+  if (state.busy) return;
+  const key = cardKey(ev);
+  state.busy = true;
+  state.saving[key] = status === S.ABGESAGT ? 'Wird abgesagt…' : 'Wird zurückgesetzt…';
+  render();
+  try {
+    const d = await api('setStatus', { ref: ref(ev), status });
+    applyData(d);
+    delete state.saving[key];
+    state.busy = false;
+    render();
+    if (status === S.ABGESAGT && !d.warning) {
+      toast('Termin abgesagt.', false, {
+        label: 'Rückgängig',
+        onClick: () => {
+          const fresh = state.events.find(e => cardKey(e) === key) || ev;
+          quickStatus(fresh, S.AKTIV);
+        },
+      });
+    } else {
+      toast(d.message || 'Gespeichert.', d.warning);
+    }
+  } catch (e) {
+    delete state.saving[key];
+    state.busy = false;
+    if (e.auth) return logout(e.message);
+    render();
+    toast(e.message, true);
+  }
+}
+
+listEl.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) cardSwipeStart(e.target, e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+listEl.addEventListener('touchmove', e => {
+  if (cardSwipeMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
+}, { passive: false });
+listEl.addEventListener('touchend', cardSwipeEnd);
+listEl.addEventListener('touchcancel', () => { if (cardSwipe.wrap) { cardSwipe.dx = 0; cardSwipeEnd(); } });
+listEl.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') cardSwipeStart(e.target, e.clientX, e.clientY); });
+window.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') cardSwipeMove(e.clientX, e.clientY); });
+window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') cardSwipeEnd(); });
+
+/* --- Pull-to-Refresh in Liste und Woche --- */
+
+const PTR_TRIGGER = 70;   // so weit ziehen, dann wird neu geladen
+const PTR_MAX = 110;
+const ptr = { y: 0, x: 0, pull: 0, active: false, axis: null, moved: false, loading: false };
+const ptrEl = $('#ptr');
+
+function setPtr(px, animate) {
+  ptrEl.style.transition = animate && !reducedMotion() ? 'height .2s ease-out' : 'none';
+  ptrEl.style.height = px + 'px';
+  const pill = ptrEl.querySelector('.ptr-pill .ic');
+  if (pill && !ptr.loading) pill.style.transform = `rotate(${Math.min(px, PTR_MAX) * 3}deg)`;
+  ptrEl.classList.toggle('ready', px >= PTR_TRIGGER || ptr.loading);
+}
+
+function ptrStart(x, y) {
+  if (window.scrollY > 0 || ptr.loading || state.busy || !sheetEl.hidden || state.page) return;
+  Object.assign(ptr, { x, y, pull: 0, active: true, axis: null, moved: false });
+}
+
+function ptrMove(x, y) {
+  if (!ptr.active) return false;
+  const dx = x - ptr.x, dy = y - ptr.y;
+  if (ptr.axis === null && (Math.abs(dx) > AXIS_LOCK || Math.abs(dy) > AXIS_LOCK)) {
+    ptr.axis = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && window.scrollY <= 0 ? 'down' : 'other';
+    if (ptr.axis !== 'down') { ptr.active = false; return false; }
+  }
+  if (ptr.axis !== 'down') return false;
+  ptr.pull = Math.max(0, Math.min(PTR_MAX, dy * 0.5));
+  setPtr(ptr.pull, false);
+  return true;
+}
+
+async function ptrEnd() {
+  if (!ptr.active) return;
+  ptr.active = false;
+  if (ptr.axis !== 'down') return;
+  ptr.moved = true;
+  setTimeout(() => { ptr.moved = false; }, 350);
+  if (ptr.pull < PTR_TRIGGER) return setPtr(0, true);
+  ptr.loading = true;
+  ptrEl.classList.add('loading');
+  setPtr(56, true);
+  await load();
+  ptr.loading = false;
+  ptrEl.classList.remove('loading');
+  setPtr(0, true);
+  toast(state.loadError ? state.loadError.message : 'Aktualisiert.', !!state.loadError);
+}
+
+// am ganzen App-Bereich, damit auch leere Listen gezogen werden können
+appEl.addEventListener('touchstart', e => {
+  if (e.touches.length === 1 && !e.target.closest('#dayStrip, .swipe-wrap.dragging')) ptrStart(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+appEl.addEventListener('touchmove', e => {
+  if (cardSwipe.axis === 'x' && cardSwipe.wrap) return;
+  if (ptrMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
+}, { passive: false });
+appEl.addEventListener('touchend', ptrEnd);
+appEl.addEventListener('touchcancel', () => { ptr.active = false; if (!ptr.loading) setPtr(0, true); });
+
+/* --- Sheet nach unten ziehen zum Schließen (iPhone-App ohne Zurück-Geste) --- */
+
+const sheetDrag = { y: 0, x: 0, dy: 0, active: false, axis: null };
+
+sheetEl.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1 || state.busy) return;
+  const scroller = sheetEl.querySelector('.sheet-scroll');
+  const onHandle = e.target.closest('.grip, .sheet-head, h2');
+  if (!onHandle && scroller && scroller.scrollTop > 0) return;
+  if (e.target.closest('input, textarea, select, .swatches, .day-strip')) return;
+  Object.assign(sheetDrag, { y: e.touches[0].clientY, x: e.touches[0].clientX, dy: 0, active: true, axis: null });
+}, { passive: true });
+
+sheetEl.addEventListener('touchmove', e => {
+  if (!sheetDrag.active) return;
+  const dy = e.touches[0].clientY - sheetDrag.y;
+  const dx = e.touches[0].clientX - sheetDrag.x;
+  if (sheetDrag.axis === null && (Math.abs(dy) > AXIS_LOCK || Math.abs(dx) > AXIS_LOCK)) {
+    sheetDrag.axis = dy > 0 && Math.abs(dy) > Math.abs(dx) ? 'down' : 'other';
+    if (sheetDrag.axis !== 'down') { sheetDrag.active = false; return; }
+    sheetEl.classList.add('dragging');
+  }
+  if (sheetDrag.axis !== 'down') return;
+  sheetDrag.dy = Math.max(0, dy);
+  sheetEl.style.transform = `translateY(${sheetDrag.dy}px)`;
+  if (e.cancelable) e.preventDefault();
+}, { passive: false });
+
+sheetEl.addEventListener('touchend', () => {
+  if (!sheetDrag.active) return;
+  sheetDrag.active = false;
+  sheetEl.classList.remove('dragging');
+  if (sheetDrag.axis !== 'down') return;
+  if (sheetDrag.dy > Math.min(140, sheetEl.offsetHeight * 0.25)) closeSheet();
+  else sheetEl.style.transform = '';
+});
+
 /* ---------- Bottom Sheet mit Fokusführung ---------- */
 
 let lastFocus = null;
@@ -577,9 +811,11 @@ function openSheet(html, opts = {}) {
     const card = lastFocus && lastFocus.closest && lastFocus.closest('.card, .wcard');
     lastFocusKey = card ? card.dataset.key : null;
   }
+  if (!wasOpen) pushNav('sheet');
   sheetEl.innerHTML = html;
   hydrateIcons(sheetEl);
   sheetEl.hidden = false;
+  sheetEl.style.transform = '';
   setBackgroundInert(true);
   backdropEl.classList.add('open');
   requestAnimationFrame(() => sheetEl.classList.add('open'));
@@ -601,9 +837,11 @@ function setBackgroundInert(on) {
   });
 }
 
-function closeSheet(force) {
+function closeSheet(force, fromHistory) {
   if (state.busy && !force) return;
   if (!sheetEl.classList.contains('open') && sheetEl.hidden) return;
+  if (!fromHistory) popNav('sheet');
+  sheetEl.style.transform = '';
   sheetEl.classList.remove('open');
   backdropEl.classList.remove('open');
   setBackgroundInert(false);
@@ -612,6 +850,38 @@ function closeSheet(force) {
 }
 
 /** Fokus zurück auf das auslösende Element – oder dieselbe Karte, falls die Liste neu gezeichnet wurde. */
+/* Zurück-Taste (Android) bzw. Zurück-Geste (Browser): Für jedes offene Sheet und
+ * jede Verwaltungsseite liegt ein Eintrag im Verlauf. popstate schließt es wieder. */
+let navSkip = 0;
+let navPending = null; // Eintrag, der nach einem laufenden history.back() angelegt wird
+
+function pushNav(kind) {
+  if (navSkip > 0) { navPending = kind; return; }
+  try { history.pushState({ dp: kind }, ''); } catch (e) { /* egal */ }
+}
+
+/** Beim Schließen über die Oberfläche den eigenen Verlaufseintrag wieder entfernen. */
+function popNav(kind) {
+  if (history.state && history.state.dp === kind) {
+    navSkip++;
+    history.back();
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (navSkip > 0) {
+    navSkip--;
+    if (navSkip === 0 && navPending) { const k = navPending; navPending = null; pushNav(k); }
+    return;
+  }
+  if (!sheetEl.hidden && sheetEl.classList.contains('open')) {
+    if (state.busy) { pushNav('sheet'); return; } // während des Speicherns offen lassen
+    closeSheet(false, true);
+  } else if (state.page) {
+    closePage(true);
+  }
+});
+
 function restoreFocus() {
   const el = lastFocus;
   const key = lastFocusKey;
@@ -1020,6 +1290,7 @@ const ROLE_INFO = {
 const realColor = id => COLOR_HEX.light[String(id)] || '#9e9e9e';
 
 function openPage(name) {
+  pushNav('page');
   state.page = name;
   appEl.hidden = true;
   pageEl.hidden = false;
@@ -1029,7 +1300,8 @@ function openPage(name) {
   if (name === 'codes') { state.codesError = null; loadCodes(); }
 }
 
-function closePage() {
+function closePage(fromHistory) {
+  if (!fromHistory) popNav('page');
   state.page = null;
   pageEl.hidden = true;
   pageEl.innerHTML = '';
@@ -1383,13 +1655,29 @@ function afterCodeChange(d) {
 /* ---------- Meldungen ---------- */
 
 let toastTimer;
-function toast(msg, isErr) {
+/** Meldung unten. action = { label, onClick } zeigt einen Knopf (z. B. „Rückgängig“). */
+function toast(msg, isErr, action) {
   const t = $('#toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (isErr ? ' err' : '');
-  t.setAttribute('role', isErr ? 'alert' : 'status');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.className = 'toast'), isErr ? 6000 : 3000);
+  if (action) {
+    t.innerHTML = `${icon('check', 20, 2.5)}<span class="t-msg"></span><button class="t-btn" type="button"></button>`;
+    t.querySelector('.t-msg').textContent = msg;
+    const b = t.querySelector('.t-btn');
+    b.textContent = action.label;
+    b.onclick = () => { hideToast(); action.onClick(); };
+    t.className = 'toast show has-action' + (isErr ? ' err' : '');
+  } else {
+    t.textContent = msg;
+    t.className = 'toast show' + (isErr ? ' err' : '');
+  }
+  t.setAttribute('role', isErr ? 'alert' : 'status');
+  toastTimer = setTimeout(hideToast, action ? 6000 : isErr ? 6000 : 3000);
+}
+
+function hideToast() {
+  const t = $('#toast');
+  t.className = 'toast';
+  setTimeout(() => { if (!t.classList.contains('show')) t.innerHTML = ''; }, 250);
 }
 
 /* ---------- Anmeldung (V2, Kapitel 8.10) ---------- */
@@ -1443,7 +1731,7 @@ $('#loginForm').addEventListener('submit', async e => {
 /* ---------- Start ---------- */
 
 listEl.addEventListener('click', e => {
-  if (swipe.moved) return; // war ein Wischen, kein Antippen
+  if (swipe.moved || cardSwipe.moved || ptr.moved) return; // war eine Geste, kein Antippen
   const card = e.target.closest('.card, .wcard');
   if (card) openDetail(state.events[+card.dataset.i]);
 });

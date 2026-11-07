@@ -265,11 +265,17 @@ function setupCategories() {
       .build()
   );
 
-  // Farbe: Name aus der ColorId (Formel) + farbiger Hintergrund
-  const names = ids.map(id => `${id},"${CONFIG.CATEGORY_COLORS[id]}"`).join(',');
-  catSheet.getRange(2, 3, body, 1).setFormulaR1C1(
-    `=IF(RC[-1]="","",IFERROR(SWITCH(VALUE(RC[-1]),${names}),"nicht erlaubt"))`
-  );
+  // Farbe: Name aus der ColorId (einfache Formel je Zeile) + farbiger Hintergrund.
+  // Das Trennzeichen hängt von der Sheet-Sprache ab (Deutsch ";" – Englisch ","),
+  // sonst zeigt das Sheet #ERROR!.
+  const sep = formulaSeparator_(ss);
+  const choices = [];
+  for (let id = 1; id <= 11; id++) choices.push(`"${CONFIG.CATEGORY_COLORS[id] || 'reserviert'}"`);
+  const formulas = [];
+  for (let r = 2; r <= maxRows; r++) {
+    formulas.push([`=IF(B${r}=""${sep}""${sep}IFERROR(CHOOSE(VALUE(B${r})${sep}${choices.join(sep)})${sep}"nicht erlaubt"))`]);
+  }
+  catSheet.getRange(2, 3, body, 1).setFormulas(formulas);
   const colorRange = catSheet.getRange(2, 3, body, 1);
   const otherRules = catSheet.getConditionalFormatRules().filter(r => {
     const rs = r.getRanges();
@@ -458,6 +464,15 @@ function applyCategorySuggestions() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Argument-Trennzeichen für Formeln: "," in Sprachen mit Dezimalpunkt
+ * (Englisch, Japanisch, Chinesisch …), sonst ";" (Deutsch, Französisch …).
+ */
+function formulaSeparator_(ss) {
+  const locale = (ss.getSpreadsheetLocale() || 'de_DE').toLowerCase();
+  return /^(en|ja|zh|ko|th|he|iw|hi|ms|fil|tl)(_|$)/.test(locale) ? ',' : ';';
 }
 
 /** Auswahlliste für die Spalte Category: Werte aus Categories!A2:A (leer erlaubt). */

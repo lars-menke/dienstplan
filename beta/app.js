@@ -9,6 +9,15 @@ const API_URL = (window.DIENSTPLAN_CONFIG || {}).API_URL || '';
 const KEY_CODE = 'dienstplan.code';
 const KEY_DATA = 'dienstplan.beta.data';
 const KEY_THEME = 'dienstplan.theme';
+const KEY_VIEW = 'dienstplan.view';
+
+// Vorlagen für „Neuer Termin“ (V2 8.5) – aus config.js, sonst diese Vorgabe
+const TEMPLATES = (window.DIENSTPLAN_CONFIG && window.DIENSTPLAN_CONFIG.TEMPLATES) || [
+  { label: 'Übungsdienst', title: 'Übungsdienst: ', start: '19:30', end: '21:30', location: 'Feuerwehrhaus', category: 'Übung' },
+  { label: 'Gruppendienst', title: 'Gruppendienst: ', start: '09:00', end: '12:00', location: 'Feuerwehrhaus', category: 'Ausbildung' },
+  { label: 'Besprechung', title: 'Besprechung: ', start: '19:00', end: '', location: 'Schulungsraum', category: 'Besprechung' },
+  { label: 'Leer', title: '', start: '19:00', end: '21:00', location: '', category: '' },
+];
 
 // Google-Kalender-Farben (V2, Kapitel 4.2). Im Dunkelmodus werden einige aufgehellt.
 const COLOR_HEX = {
@@ -22,6 +31,7 @@ const state = {
   events: [], categories: [], categoryList: [], today: '', user: '', role: '',
   loadedAt: null, q: '', showPast: false, busy: false, loadError: null,
   codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
+  view: 'list', weekStart: null, selDay: null, // Wochenansicht (Etappe 4)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -294,6 +304,12 @@ function matches(ev, q) {
 function render() {
   renderHeader();
   if (state.page) renderPage();
+  const week = state.view === 'week';
+  $('#weekHead').hidden = !week;
+  $('#searchBox').hidden = week;
+  document.querySelectorAll('.seg [data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
+  listEl.classList.toggle('week-list', week);
+  if (week && state.loadedAt) return renderWeek();
   if (!state.loadedAt) {
     if (state.loadError) {
       listEl.innerHTML = `<div class="empty">${icon('wifiOff', 32)}<p>${esc(state.loadError.message)}</p>
@@ -421,6 +437,129 @@ function statusBadge(ev) {
   }
 }
 
+/* ---------- Wochenansicht (V2, Kapitel 8.2) ---------- */
+
+/** ISO-Kalenderwoche */
+function isoWeek(iso) {
+  const d = toDate(iso);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); // Donnerstag dieser Woche
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+}
+
+function weekRangeLabel(start) {
+  const end = addDays(start, 6);
+  const a = toDate(start), b = toDate(end);
+  const month = d => d.toLocaleDateString('de-DE', { month: 'long' });
+  if (a.getFullYear() !== b.getFullYear()) {
+    return `${a.getDate()}. ${month(a)} ${a.getFullYear()} – ${b.getDate()}. ${month(b)} ${b.getFullYear()}`;
+  }
+  if (a.getMonth() !== b.getMonth()) return `${a.getDate()}. ${month(a)} – ${b.getDate()}. ${month(b)}`;
+  return `${a.getDate()}.–${b.getDate()}. ${month(b)}`;
+}
+
+function weekRelative(start) {
+  const diff = Math.round((toDate(start) - toDate(weekStart(todayIso()))) / (7 * 86400000));
+  if (diff === 0) return 'diese Woche';
+  if (diff === 1) return 'nächste Woche';
+  if (diff === -1) return 'letzte Woche';
+  return diff > 0 ? `in ${diff} Wochen` : `vor ${-diff} Wochen`;
+}
+
+function eventsOn(iso) {
+  return state.events.filter(ev => ev.date <= iso && (ev.endDate || ev.date) >= iso);
+}
+
+function ensureWeek() {
+  if (!state.weekStart) state.weekStart = weekStart(todayIso());
+  const end = addDays(state.weekStart, 6);
+  if (!state.selDay || state.selDay < state.weekStart || state.selDay > end) {
+    const t = todayIso();
+    state.selDay = t >= state.weekStart && t <= end ? t : state.weekStart;
+  }
+}
+
+function dotColor(ev) {
+  if (ev.status === S.VERSCHOBEN) return 'var(--warn-solid)';
+  if (ev.status === S.ABGESAGT) return 'var(--off)';
+  return categoryColor(ev.category) || 'var(--muted)';
+}
+
+function shortTime(ev) {
+  if (ev.allDay) return 'Ganztägig';
+  return ev.end ? `${ev.start}–${ev.end}` : ev.start;
+}
+
+function renderWeek() {
+  ensureWeek();
+  const today = todayIso();
+  const days = [...Array(7)].map((_, i) => addDays(state.weekStart, i));
+
+  $('#weekRange').textContent = weekRangeLabel(state.weekStart);
+  $('#weekSub').textContent = `KW ${isoWeek(state.weekStart)} · ${weekRelative(state.weekStart)}`;
+
+  $('#dayStrip').innerHTML = days.map(d => {
+    const evs = eventsOn(d);
+    const dots = evs.slice(0, 3).map(ev => `<i style="background:${dotColor(ev)}"></i>`).join('');
+    const label = `${longDate(d)}${d === today ? ', heute' : ''}, ${evs.length ? `${evs.length} ${evs.length === 1 ? 'Termin' : 'Termine'}` : 'kein Termin'}`;
+    return `<button class="day-btn${d === today ? ' is-today' : ''}" type="button" data-day="${d}" aria-pressed="${d === state.selDay}" aria-label="${esc(label)}">
+      <span class="wd" aria-hidden="true">${esc(wdShort(d))}</span><span class="d" aria-hidden="true">${toDate(d).getDate()}</span>
+      <span class="day-dots" aria-hidden="true">${dots}</span></button>`;
+  }).join('');
+
+  listEl.innerHTML = days.map(d => {
+    const evs = eventsOn(d);
+    const cards = evs.map(ev => {
+      const cls = ['wcard'];
+      let meta;
+      if (ev.status === S.VERSCHOBEN) {
+        cls.push('is-moved');
+        const target = parseGermanDate(ev.verschobenAuf);
+        meta = `${esc(shortTime(ev))} · ${target ? `Verschoben auf ${esc(wdDayMonth(target))}` : 'Verschoben'}`;
+      } else if (ev.status === S.ABGESAGT) {
+        cls.push('is-cancelled');
+        meta = `${esc(shortTime(ev))} · Abgesagt`;
+      } else {
+        if (d === today) cls.push('is-today');
+        const color = categoryColor(ev.category);
+        meta = `${color ? `<span class="dot" style="background:${color}"></span>` : ''}${[shortTime(ev), ev.location].filter(Boolean).map(esc).join(' · ')}`;
+      }
+      const statusWord = ev.status === S.ABGESAGT ? ', abgesagt' : ev.status === S.VERSCHOBEN ? ', verschoben' : '';
+      return `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(ev.eventId || 'r' + ev.row)}"
+          aria-label="${esc(`${ev.subject}, ${timeText(ev)}${ev.location ? ', ' + ev.location : ''}${statusWord}`)}">
+        <span class="wmeta" aria-hidden="true">${meta}</span><span class="wtitle" aria-hidden="true">${esc(ev.subject)}</span></button>`;
+    }).join('');
+    return `<section class="day-row${d === today ? ' is-today' : ''}" id="day-${d}" aria-label="${esc(longDate(d))}">
+      <div class="day-label" aria-hidden="true"><span class="wd">${esc(wdShort(d))}</span><span class="d">${toDate(d).getDate()}</span></div>
+      ${cards ? `<div class="day-events">${cards}</div>` : '<span class="day-empty">Kein Termin</span>'}
+    </section>`;
+  }).join('');
+}
+
+function setView(view) {
+  state.view = view === 'week' ? 'week' : 'list';
+  store.set(KEY_VIEW, state.view);
+  render();
+  window.scrollTo(0, 0);
+}
+
+function shiftWeek(n) {
+  ensureWeek();
+  state.weekStart = addDays(state.weekStart, 7 * n);
+  const t = todayIso();
+  const end = addDays(state.weekStart, 6);
+  state.selDay = t >= state.weekStart && t <= end ? t : state.weekStart;
+  renderWeek();
+  window.scrollTo(0, 0);
+}
+
+function scrollToDay(d) {
+  const row = document.getElementById('day-' + d);
+  if (!row) return;
+  const smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  row.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+}
+
 /* ---------- Bottom Sheet mit Fokusführung ---------- */
 
 let lastFocus = null;
@@ -435,7 +574,7 @@ function openSheet(html, opts = {}) {
   const wasOpen = sheetEl.classList.contains('open');
   if (!wasOpen) {
     lastFocus = document.activeElement;
-    const card = lastFocus && lastFocus.closest && lastFocus.closest('.card');
+    const card = lastFocus && lastFocus.closest && lastFocus.closest('.card, .wcard');
     lastFocusKey = card ? card.dataset.key : null;
   }
   sheetEl.innerHTML = html;
@@ -480,7 +619,7 @@ function restoreFocus() {
   lastFocusKey = null;
   setTimeout(() => {
     let target = el && document.contains(el) ? el : null;
-    if (!target && key) target = listEl.querySelector(`.card[data-key="${CSS.escape(key)}"]`);
+    if (!target && key) target = listEl.querySelector(`[data-key="${CSS.escape(key)}"]`);
     if (!target) target = state.page ? pageEl.querySelector('h1') : $('#btnMore');
     if (state.page && target && !pageEl.contains(target)) target = pageEl.querySelector('h1');
     if (target && (!appEl.hidden || state.page)) target.focus({ preventScroll: true });
@@ -694,7 +833,8 @@ function openMove(ev) {
 
 function openForm(ev) {
   const isNew = !ev;
-  const today = todayIso();
+  // in der Wochenansicht startet ein neuer Termin am gewählten Tag
+  const today = state.view === 'week' && state.selDay ? state.selDay : todayIso();
   const e = ev || {
     subject: '', date: today, endDate: today, start: '19:00', end: '21:00',
     allDay: false, location: '', description: '', category: '',
@@ -716,6 +856,9 @@ function openForm(ev) {
   openSheet(`<div class="sheet-scroll">
       ${grip}
       <h2 id="sheetTitle">${isNew ? 'Neuer Termin' : 'Termin bearbeiten'}</h2>
+      ${isNew && TEMPLATES.length ? `<div class="stack"><span class="label" id="tplLabel">Vorlage</span>
+        <div class="chips" role="group" aria-labelledby="tplLabel">${TEMPLATES.map((t, i) =>
+          `<button class="tpl-chip" type="button" data-tpl="${i}" aria-pressed="false">${esc(t.label)}</button>`).join('')}</div></div>` : ''}
       <label class="field">Titel<input id="fSub" value="${esc(e.subject)}" placeholder="z. B. Übungsdienst" autocomplete="off" ${isNew ? 'data-autofocus' : ''}></label>
       <label class="switch-row">Ganztägig
         <span class="switch"><input type="checkbox" id="fAll" role="switch" ${e.allDay ? 'checked' : ''}><span class="track"></span><span class="knob"></span></span>
@@ -737,6 +880,24 @@ function openForm(ev) {
     </div>`);
 
   const toggleTimes = () => sheetEl.querySelectorAll('[data-time]').forEach(el => (el.hidden = $('#fAll').checked));
+
+  // Vorlage anwenden: Titel-Anfang, Uhrzeit, Ort, Kategorie (fehlt sie, bleibt sie leer)
+  sheetEl.querySelectorAll('[data-tpl]').forEach(b => (b.onclick = () => {
+    const t = TEMPLATES[+b.dataset.tpl];
+    const known = categoryOptions().find(n => n.toLowerCase() === (t.category || '').toLowerCase());
+    category = known || '';
+    $('#fSub').value = t.title || '';
+    $('#fAll').checked = false;
+    toggleTimes();
+    $('#fStart').value = t.start || '';
+    $('#fStop').value = t.end || '';
+    $('#fLoc').value = t.location || '';
+    $('#fCats').innerHTML = chips();
+    sheetEl.querySelectorAll('[data-tpl]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    const sub = $('#fSub');
+    sub.focus();
+    sub.setSelectionRange(sub.value.length, sub.value.length);
+  }));
   $('#fAll').onchange = toggleTimes;
   toggleTimes();
 
@@ -1282,16 +1443,49 @@ $('#loginForm').addEventListener('submit', async e => {
 /* ---------- Start ---------- */
 
 listEl.addEventListener('click', e => {
-  const card = e.target.closest('.card');
+  const card = e.target.closest('.card, .wcard');
   if (card) openDetail(state.events[+card.dataset.i]);
 });
 $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
 $('#btnNew').onclick = () => openForm(null);
 $('#btnReload').onclick = load;
 $('#btnMore').onclick = openMore;
-$('#btnWeek').onclick = () => toast('Die Wochenansicht kommt mit einer der nächsten Beta-Versionen.');
+document.querySelectorAll('.seg [data-view]').forEach(b => (b.onclick = () => setView(b.dataset.view)));
+$('#weekPrev').onclick = () => shiftWeek(-1);
+$('#weekNext').onclick = () => shiftWeek(1);
+$('#dayStrip').addEventListener('click', e => {
+  const b = e.target.closest('[data-day]');
+  if (!b || swipe.moved) return;
+  state.selDay = b.dataset.day;
+  $('#dayStrip').querySelectorAll('[data-day]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  scrollToDay(state.selDay);
+});
+
+// Wischen im Tagesstreifen: nach links = nächste Woche, nach rechts = vorige Woche
+const swipe = { x: 0, y: 0, active: false, moved: false };
+$('#dayStrip').addEventListener('pointerdown', e => {
+  Object.assign(swipe, { x: e.clientX, y: e.clientY, active: true, moved: false });
+});
+window.addEventListener('pointerup', e => {
+  if (!swipe.active) return;
+  swipe.active = false;
+  const dx = e.clientX - swipe.x;
+  const dy = e.clientY - swipe.y;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    swipe.moved = true;
+    shiftWeek(dx < 0 ? 1 : -1);
+    setTimeout(() => { swipe.moved = false; }, 50);
+  }
+});
+$('#dayStrip').addEventListener('pointercancel', () => { swipe.active = false; });
 // "Heute": springt zu heute bzw. zum nächsten kommenden Termin
 $('#btnToday').onclick = () => {
+  if (state.view === 'week') {
+    state.weekStart = weekStart(todayIso());
+    state.selDay = todayIso();
+    renderWeek();
+    return scrollToDay(state.selDay);
+  }
   state.q = '';
   $('#q').value = '';
   render();
@@ -1315,6 +1509,7 @@ if ('serviceWorker' in navigator) {
 
 (function start() {
   applyTheme();
+  state.view = store.get(KEY_VIEW) === 'week' ? 'week' : 'list';
   hydrateIcons(document);
 
   if (!API_URL || API_URL.startsWith('HIER')) {

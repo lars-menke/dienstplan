@@ -58,12 +58,21 @@
         </div>
         <div class="tools">
           <div class="seg" role="group" aria-label="Ansicht">
-            <button type="button" aria-pressed="true">Liste</button>
-            <button type="button" aria-pressed="false" id="btnWeek">Woche</button>
+            <button type="button" aria-pressed="true" id="btnList" data-view="list">Liste</button>
+            <button type="button" aria-pressed="false" id="btnWeek" data-view="week">Woche</button>
           </div>
           <button class="today-btn" id="btnToday" type="button">Heute</button>
         </div>
-        <label class="search">
+        <!-- Wochenansicht: Navigation + Tagesstreifen (V2 8.2) -->
+        <div class="week-head" id="weekHead" hidden>
+          <div class="week-nav">
+            <button class="icon-btn" type="button" id="weekPrev" aria-label="Vorige Woche" data-icon="chevronLeft"></button>
+            <div class="week-title" aria-live="polite"><b id="weekRange"></b><span id="weekSub"></span></div>
+            <button class="icon-btn" type="button" id="weekNext" aria-label="Nächste Woche" data-icon="chevronRight"></button>
+          </div>
+          <div class="day-strip" id="dayStrip" role="group" aria-label="Tage der Woche – nach links oder rechts wischen wechselt die Woche"></div>
+        </div>
+        <label class="search" id="searchBox">
           <span data-icon="search" data-size="18"></span>
           <input id="q" type="search" placeholder="Termine durchsuchen" aria-label="Termine durchsuchen" autocomplete="off">
         </label>

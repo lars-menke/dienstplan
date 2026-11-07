@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '3.0 (Etappe 3: Verwaltung in der App)',
+  VERSION: '3.1 (Zugangscodes in der App löschen)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -93,6 +93,7 @@ function handleAction_(action, data, user) {
     case 'listCodes': return listCodes_(user);
     case 'createCode': return createCodeApi_(data, user);
     case 'updateCode': return updateCode_(data, user);
+    case 'deleteCode': return deleteCode_(data, user);
     case 'rotateTeamCode': return rotateTeamCode_(user);
     default: throw new Error(`Unbekannte Aktion: ${action}`);
   }
@@ -130,6 +131,7 @@ function requiredRole_(action, data) {
     case 'listCodes':
     case 'createCode':
     case 'updateCode':
+    case 'deleteCode':
     case 'rotateTeamCode':
       return 'admin';
     default:
@@ -919,6 +921,26 @@ function updateCode_(data, user) {
     else if (changes.role) message = `„${entry.name}“ hat jetzt die Rolle ${ROLES[entry.role].label}.`;
   });
   return listCodes_(user, { message });
+}
+
+/**
+ * { id } – Code endgültig entfernen. Der eigene Code lässt sich nicht löschen,
+ * der letzte aktive Admin auch nicht.
+ */
+function deleteCode_(data, user) {
+  let name = '';
+  withCodeStore_(store => {
+    const idx = store.findIndex(c => c.id === data.id);
+    if (idx === -1) throw new Error('Diesen Code gibt es nicht mehr. Bitte neu laden.');
+    const entry = store[idx];
+    if (entry.id === user.id) throw new Error('Den eigenen Code kannst du nicht löschen.');
+    if (!entry.team && !entry.blocked && entry.role === 'admin' && activeAdmins_(store).length <= 1) {
+      throw new Error('Das ist der letzte Admin-Code. Er kann nicht gelöscht werden.');
+    }
+    name = entry.name;
+    store.splice(idx, 1);
+  });
+  return listCodes_(user, { message: `Zugangscode „${name}“ gelöscht.` });
 }
 
 /** Neuer Mannschafts-Code, der alte ist sofort ungültig. Legt einen an, falls es keinen gibt. */

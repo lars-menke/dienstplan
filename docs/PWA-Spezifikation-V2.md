@@ -182,6 +182,7 @@ Anfrageformat wie V1: `POST`, `text/plain`, `{ action, code, data }`.
 | `createCode` | `{ name, role }` | `{ code, link }`, beides **nur in dieser Antwort** |
 | `updateCode` | `{ id, name?, role?, blocked? }` | ändern, sperren, entsperren. Den eigenen Code kann man weder sperren noch herabstufen. Der letzte Admin bleibt immer Admin. |
 | `rotateTeamCode` | – | neuer Mannschafts-Code, alter sofort ungültig → `{ code, link }`. Gibt es noch keinen, wird einer angelegt. |
+| `deleteCode` | `{ id }` | Code endgültig entfernen (ergänzt 08.11.2026). Den eigenen Code und den letzten Admin kann man nicht löschen. Antwort wie `listCodes` + `message` |
 
 ### 5.3 Fehler
 

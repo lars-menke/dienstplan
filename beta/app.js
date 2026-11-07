@@ -701,15 +701,18 @@ window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') cardS
 const PTR_TRIGGER = 70;   // so weit ziehen, dann wird neu geladen
 const PTR_MAX = 110;
 const ptr = { y: 0, x: 0, pull: 0, active: false, axis: null, moved: false, loading: false };
-const ptrEl = $('#ptr');
+const reloadBtn = $('#btnReload');
 
-function setPtr(px, animate) {
-  ptrEl.style.transition = animate && !reducedMotion() ? 'height .2s ease-out' : 'none';
-  ptrEl.style.height = px + 'px';
-  const pill = ptrEl.querySelector('.ptr-pill .ic');
-  if (pill && !ptr.loading) pill.style.transform = `rotate(${Math.min(px, PTR_MAX) * 3}deg)`;
-  ptrEl.classList.toggle('ready', px >= PTR_TRIGGER || ptr.loading);
+/** Zieh-Anzeige am ↻-Knopf oben: färbt sich ein und dreht sich mit dem Finger. */
+function setPtr(px) {
+  const icn = reloadBtn.querySelector('.ic');
+  reloadBtn.classList.toggle('pulling', px > 0);
+  reloadBtn.classList.toggle('ready', px >= PTR_TRIGGER);
+  if (icn) icn.style.transform = px > 0 ? `rotate(${Math.round(px * 3.2)}deg)` : '';
 }
+
+
+
 
 function ptrStart(x, y) {
   if (window.scrollY > 0 || ptr.loading || state.busy || !sheetEl.hidden || state.page) return;
@@ -725,7 +728,7 @@ function ptrMove(x, y) {
   }
   if (ptr.axis !== 'down') return false;
   ptr.pull = Math.max(0, Math.min(PTR_MAX, dy * 0.5));
-  setPtr(ptr.pull, false);
+  setPtr(ptr.pull);
   return true;
 }
 
@@ -735,14 +738,14 @@ async function ptrEnd() {
   if (ptr.axis !== 'down') return;
   ptr.moved = true;
   setTimeout(() => { ptr.moved = false; }, 350);
-  if (ptr.pull < PTR_TRIGGER) return setPtr(0, true);
+  const go = ptr.pull >= PTR_TRIGGER;
+  setPtr(0);
+  if (!go) return;
   ptr.loading = true;
-  ptrEl.classList.add('loading');
-  setPtr(56, true);
-  await load();
+  reloadBtn.classList.add('ready');      // bleibt eingefärbt, solange geladen wird
+  await load();                           // dreht den Knopf (.spinning)
+  reloadBtn.classList.remove('ready');
   ptr.loading = false;
-  ptrEl.classList.remove('loading');
-  setPtr(0, true);
   toast(state.loadError ? state.loadError.message : 'Aktualisiert.', !!state.loadError);
 }
 
@@ -755,7 +758,7 @@ appEl.addEventListener('touchmove', e => {
   if (ptrMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
 }, { passive: false });
 appEl.addEventListener('touchend', ptrEnd);
-appEl.addEventListener('touchcancel', () => { ptr.active = false; if (!ptr.loading) setPtr(0, true); });
+appEl.addEventListener('touchcancel', () => { ptr.active = false; if (!ptr.loading) setPtr(0); });
 
 /* --- Sheet nach unten ziehen zum Schließen (iPhone-App ohne Zurück-Geste) --- */
 
@@ -1470,7 +1473,10 @@ function renderCodesPage() {
           <span class="mono">${esc(team.hint)}</span>
           <span class="small-note">Gemeinsamer Code · ${team.lastUsed ? `zuletzt genutzt ${relativeDay(team.lastUsed)}` : 'noch nie genutzt'}</span>
           <span class="small-note">Den Anmelde-Link gibt es nur direkt nach dem Erzeugen. Ist er weg, einfach neu erzeugen.</span>
-          <button class="btn small" type="button" id="teamRotate">${icon('refresh', 18)}Neu erzeugen</button>
+          <div class="row-btns">
+            <button class="btn small" type="button" id="teamRotate" style="flex:2">${icon('refresh', 18)}Neu erzeugen</button>
+            <button class="btn small" type="button" id="teamEdit" style="flex:1">Bearbeiten</button>
+          </div>
         </section>`
       : `<section class="team-card" aria-labelledby="teamTitle">
           <div class="team-top"><h2 id="teamTitle">Mannschaft</h2><span class="rbadge off">Lesen</span></div>
@@ -1495,6 +1501,8 @@ function renderCodesPage() {
   if (!state.codes) return;
   pageEl.querySelectorAll('[data-code-id]').forEach(b => (b.onclick = () => openCodeSheet(state.codes.find(c => c.id === b.dataset.codeId))));
   $('#codeNew').onclick = openNewCodeSheet;
+  const teamEdit = $('#teamEdit');
+  if (teamEdit) teamEdit.onclick = () => openCodeSheet(state.codes.find(c => c.team));
   $('#teamRotate').onclick = () => {
     const team = state.codes.find(c => c.team);
     if (!team) return mutate($('#teamRotate'), 'rotateTeamCode', {}, d => showCreatedCode(d, 'Mannschaft', 'read', true));
@@ -1606,33 +1614,39 @@ function openCodeSheet(c) {
   if (!c) return;
   const fmtDate = iso => (iso ? new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'nie');
   const self = c.self;
+  const team = c.team;
   openSheet(`<div class="sheet-scroll">
       ${grip}
       <div class="sheet-head">
-        <div>${roleBadge(c).replace('rbadge', 'rbadge inline')}<h2 id="sheetTitle">${esc(c.name)}</h2></div>
+        <div>${team ? '<span class="rbadge off inline">Mannschaft · Lesen</span>' : roleBadge(c).replace('rbadge', 'rbadge inline')}<h2 id="sheetTitle">${esc(c.name)}</h2></div>
         ${closeBtn()}
       </div>
       <div class="facts">
         <div class="fact">${icon('key', 20)}<div><strong class="mono">${esc(c.hint)}</strong><span class="muted">erstellt am ${esc(fmtDate(c.created))} · ${c.lastUsed ? `zuletzt genutzt ${esc(relativeDay(c.lastUsed))}` : 'noch nie genutzt'}</span></div></div>
       </div>
-      ${self ? `<div class="note">${icon('info', 18)}<span>Das ist dein eigener Code. Du kannst ihn weder sperren noch herabstufen.</span></div>` : ''}
-      ${c.blocked ? '' : `<fieldset class="group-set"><legend>Rolle</legend><div class="group-box">${roleOptions(c.role, self ? ['read', 'write'].filter(r => ROLE_RANK[r] < ROLE_RANK[c.role]) : [])}</div></fieldset>`}
+      ${self ? `<div class="note">${icon('info', 18)}<span>Das ist dein eigener Code. Du kannst ihn weder sperren, herabstufen noch löschen.</span></div>` : ''}
+      <label class="field">Name<input id="csName" value="${esc(c.name)}" maxlength="60" autocomplete="off"></label>
+      ${c.blocked || team ? '' : `<fieldset class="group-set"><legend>Rolle</legend><div class="group-box">${roleOptions(c.role, self ? ['read', 'write'].filter(r => ROLE_RANK[r] < ROLE_RANK[c.role]) : [])}</div></fieldset>`}
     </div>
     <div class="sheet-foot column">
-      ${c.blocked
-        ? `<button class="btn primary" type="button" id="csUnblock">Entsperren</button>
-           <span class="small-note center">Endgültig löschen geht im Sheet-Menü „Zugangscodes verwalten“.</span>`
-        : `<button class="btn primary" type="button" id="csSave">Rolle speichern</button>
-           ${self ? '' : '<button class="btn danger" type="button" id="csBlock">Sperren</button>'}`}
+      <button class="btn primary" type="button" id="csSave">Speichern</button>
+      ${team || self ? '' : c.blocked
+        ? '<button class="btn small" type="button" id="csUnblock">Entsperren</button>'
+        : '<button class="btn small" type="button" id="csBlock">Sperren</button>'}
+      ${self ? '' : `<button class="btn danger" type="button" id="csDelete">${team ? 'Mannschafts-Code löschen' : 'Löschen'}</button>`}
     </div>`);
   bindClose();
   bindRoleOptions();
 
-  const save = $('#csSave');
-  if (save) save.onclick = e => {
-    const role = (sheetEl.querySelector('input[name="role"]:checked') || {}).value;
-    if (role === c.role) return closeSheet();
-    mutate(e.currentTarget, 'updateCode', { id: c.id, role }, afterCodeChange);
+  $('#csSave').onclick = e => {
+    const name = $('#csName').value.trim();
+    const roleEl = sheetEl.querySelector('input[name="role"]:checked');
+    const changes = { id: c.id };
+    if (!name) { $('#csName').focus(); return toast('Bitte einen Namen eingeben.', true); }
+    if (name !== c.name) changes.name = name;
+    if (roleEl && roleEl.value !== c.role) changes.role = roleEl.value;
+    if (Object.keys(changes).length === 1) return closeSheet();
+    mutate(e.currentTarget, 'updateCode', changes, afterCodeChange);
   };
   const block = $('#csBlock');
   if (block) block.onclick = () => confirmAct({
@@ -1644,6 +1658,16 @@ function openCodeSheet(c) {
   });
   const unblock = $('#csUnblock');
   if (unblock) unblock.onclick = e => mutate(e.currentTarget, 'updateCode', { id: c.id, blocked: false }, afterCodeChange);
+  const del = $('#csDelete');
+  if (del) del.onclick = () => confirmAct({
+    title: team ? 'Mannschafts-Code löschen?' : `„${c.name}“ löschen?`,
+    text: team
+      ? 'Der gemeinsame Lese-Code funktioniert danach nicht mehr. Einen neuen kannst du jederzeit erzeugen.'
+      : 'Der Code funktioniert danach nicht mehr und verschwindet aus der Liste. Das lässt sich nicht rückgängig machen.',
+    label: 'Endgültig löschen', cls: 'primary',
+    onYes: btn => mutate(btn, 'deleteCode', { id: c.id }, afterCodeChange),
+    back: () => openCodeSheet(c),
+  });
 }
 
 function afterCodeChange(d) {

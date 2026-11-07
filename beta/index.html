@@ -2,101 +2,26 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Dienstplan Beta</title>
-<meta name="description" content="Testversion der Dienstplan-App der Feuerwehr">
-<meta name="theme-color" content="#f4f3f0">
-<!-- Theme vor dem ersten Rendern setzen, damit nichts hell aufblitzt (V2, Kapitel 6) -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dienstplan</title>
+<meta name="robots" content="noindex">
+<!-- Die Testversion ist jetzt die normale App. Alte Links (auch mit #code=…) und das
+     Beta-Symbol auf dem Startbildschirm landen hier und werden weitergeleitet. -->
 <script>
   (function () {
-    var pref = 'system';
-    try { pref = localStorage.getItem('dienstplan.theme') || 'system'; } catch (e) { /* egal */ }
-    var dark = pref === 'dark' || (pref !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0b1530' : '#f4f3f0');
+    try {
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { if (/\/beta\/$/.test(r.scope)) r.unregister(); });
+        });
+      }
+    } catch (e) { /* egal */ }
+    location.replace('../' + location.hash);
   })();
 </script>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Dienstplan Beta">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="app.css">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px system-ui,sans-serif;background:#f4f3f0;color:#1b1b1b}a{color:#b71c1c}</style>
 </head>
 <body>
-  <!-- Anmeldung (unabhängig vom Theme, V2 8.10) -->
-  <section class="login" id="login" hidden aria-labelledby="loginTitle">
-    <div class="login-hero">
-      <div class="login-logo" data-icon="calendarCheck" data-size="44"></div>
-      <h1 id="loginTitle">Dienstplan</h1>
-      <p>Termine der Feuerwehr pflegen – Änderungen landen sofort im Kalender der Mannschaft.</p>
-    </div>
-    <form class="login-form" id="loginForm" novalidate>
-      <label for="codeInput">Zugangscode</label>
-      <input id="codeInput" autocomplete="off" autocapitalize="characters" spellcheck="false"
-             placeholder="XXXX-XXXX-XXXX-XXXX-XXXX">
-      <button class="login-btn" type="submit" id="loginBtn">Anmelden</button>
-      <p class="login-err" id="loginErr" role="alert"></p>
-      <p class="login-hint">Den Code oder einen Anmelde-Link bekommst du von der Person, die den Dienstplan pflegt.</p>
-    </form>
-  </section>
-
-  <!-- App -->
-  <div class="app" id="app" hidden>
-    <header class="top">
-      <div class="wrap">
-        <div class="top-row">
-          <div class="app-logo" data-icon="calendar" data-size="22"></div>
-          <div class="brand">
-            <h1>Dienstplan <span class="beta-tag">Beta</span></h1>
-            <p class="sync" id="syncState" aria-live="polite"></p>
-          </div>
-          <button class="icon-btn" id="btnReload" type="button" aria-label="Neu laden" data-icon="refresh"></button>
-          <button class="icon-btn" id="btnMore" type="button" aria-label="Weitere Aktionen" data-icon="more"></button>
-        </div>
-        <div class="tools">
-          <div class="seg" role="group" aria-label="Ansicht">
-            <button type="button" aria-pressed="true" id="btnList" data-view="list">Liste</button>
-            <button type="button" aria-pressed="false" id="btnWeek" data-view="week">Woche</button>
-          </div>
-          <button class="today-btn" id="btnToday" type="button">Heute</button>
-        </div>
-        <!-- Wochenansicht: Navigation + Tagesstreifen (V2 8.2) -->
-        <div class="week-head" id="weekHead" hidden>
-          <div class="week-nav">
-            <button class="icon-btn" type="button" id="weekPrev" aria-label="Vorige Woche" data-icon="chevronLeft"></button>
-            <div class="week-title" aria-live="polite"><b id="weekRange"></b><span id="weekSub"></span></div>
-            <button class="icon-btn" type="button" id="weekNext" aria-label="Nächste Woche" data-icon="chevronRight"></button>
-          </div>
-          <div class="day-strip" id="dayStrip" role="group" aria-label="Tage der Woche – nach links oder rechts wischen wechselt die Woche"></div>
-        </div>
-        <label class="search" id="searchBox">
-          <span data-icon="search" data-size="18"></span>
-          <input id="q" type="search" placeholder="Termine durchsuchen" aria-label="Termine durchsuchen" autocomplete="off">
-        </label>
-        <div class="offline" id="offline" hidden role="status">
-          <span data-icon="wifiOff" data-size="18"></span><span id="offlineText"></span>
-        </div>
-      </div>
-    </header>
-
-    <main class="list wrap" id="list" aria-label="Termine"></main>
-
-    <div class="fade" aria-hidden="true"></div>
-    <button class="fab" id="btnNew" type="button"><span data-icon="plus" data-size="20"></span>Termin</button>
-  </div>
-
-  <!-- Verwaltung (nur Admin): Kategorien, Zugangscodes -->
-  <div class="page" id="page" hidden></div>
-
-  <div class="backdrop" id="backdrop"></div>
-  <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden></section>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <script src="../config.js"></script>
-  <script src="icons.js"></script>
-  <script src="app.js"></script>
+  <p>Weiter zum <a href="../">Dienstplan</a> …</p>
 </body>
 </html>

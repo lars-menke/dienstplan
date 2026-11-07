@@ -1,7 +1,8 @@
-# 🚒 Dienstplan-PWA – Spezifikation & Design-Grundlage
+# 🚒 Dienstplan-PWA – Spezifikation
 
-> **Zweck dieses Dokuments:** Vollständige Beschreibung der Dienstplan-App (Stand: Version 1, November 2026) als Grundlage für ein weiterführendes Design.
-> Es beschreibt, **was die App heute tut**, **welche Daten und Zustände es gibt**, **wie die Oberfläche aufgebaut ist** und **welche technischen Grenzen ein neues Design einhalten muss**.
+> **Stand:** 08.11.2026 · Version 2 (freigegeben) · Schnittstelle 4.0
+> Diese Datei fasst die frühere Version 1 und die Ergänzung „Version 2“ zusammen und beschreibt den **heutigen Stand** der App. Sie ist die Grundlage für Weiterentwicklung und Design.
+> **Design-Vorlage:** Canvas „Dienstplan – neues Design“ (Claude Design). Die Artboards liegen als Referenz-Markup unter `docs/design/` (`*.dc.html`, `*-Dunkel.dc.html` = dunkle Variante).
 
 ---
 
@@ -10,441 +11,448 @@
 1. [Überblick](#1-überblick)
 2. [Nutzer & Nutzungssituation](#2-nutzer--nutzungssituation)
 3. [Systemarchitektur](#3-systemarchitektur)
-4. [Datenmodell](#4-datenmodell)
-5. [Status-Logik](#5-status-logik)
-6. [Screens & Abläufe](#6-screens--abläufe)
-7. [Komponenten](#7-komponenten)
-8. [Design-Tokens (aktuell)](#8-design-tokens-aktuell)
-9. [Zustände: Laden, Leer, Fehler, Offline](#9-zustände-laden-leer-fehler-offline)
-10. [Texte & Tonalität](#10-texte--tonalität)
-11. [Schnittstelle (API)](#11-schnittstelle-api)
-12. [PWA-Technik](#12-pwa-technik)
-13. [Sicherheit & Zugang](#13-sicherheit--zugang)
-14. [Barrierefreiheit](#14-barrierefreiheit)
-15. [Technische Rahmenbedingungen für das Design](#15-technische-rahmenbedingungen-für-das-design)
-16. [Bekannte Schwächen der Version 1](#16-bekannte-schwächen-der-version-1)
-17. [Ideen & offene Fragen für das neue Design](#17-ideen--offene-fragen-für-das-neue-design)
-18. [Dateien & Zuständigkeiten](#18-dateien--zuständigkeiten)
+4. [Rollen & Rechte](#4-rollen--rechte)
+5. [Zugangscodes](#5-zugangscodes)
+6. [Datenmodell](#6-datenmodell)
+7. [Status-Logik](#7-status-logik)
+8. [Kategorien – App, Sheet, Kalender](#8-kategorien--app-sheet-kalender)
+9. [Screens & Abläufe](#9-screens--abläufe)
+10. [Gesten](#10-gesten)
+11. [Darstellung: Hell, Dunkel, Systemeinstellung](#11-darstellung-hell-dunkel-systemeinstellung)
+12. [Design-Tokens](#12-design-tokens)
+13. [Komponenten](#13-komponenten)
+14. [Zustände: Laden, Leer, Fehler, Offline](#14-zustände-laden-leer-fehler-offline)
+15. [Texte & Tonalität](#15-texte--tonalität)
+16. [Schnittstelle (API)](#16-schnittstelle-api)
+17. [Sheet-Menü und Script-Funktionen](#17-sheet-menü-und-script-funktionen)
+18. [PWA-Technik](#18-pwa-technik)
+19. [Sicherheit](#19-sicherheit)
+20. [Barrierefreiheit](#20-barrierefreiheit)
+21. [Technische Rahmenbedingungen](#21-technische-rahmenbedingungen)
+22. [Bereitstellung & Betrieb](#22-bereitstellung--betrieb)
+23. [Bekannte Grenzen & offene Punkte](#23-bekannte-grenzen--offene-punkte)
+24. [Dateien](#24-dateien)
+25. [Historie](#25-historie)
 
 ---
 
 ## 1. Überblick
 
-Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwilligen Feuerwehr (Übungsdienste, Besprechungen, Ausbildungen, Versammlungen …) gepflegt werden, ohne am PC vor dem Google Sheet sitzen zu müssen.
+Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwilligen Feuerwehr (Übungsdienste, Besprechungen, Traditionstermine …) gepflegt werden, ohne am PC vor dem Google Sheet sitzen zu müssen.
 
-**Kernfunktionen**
+**Leitidee:** Das **Google Sheet ist der Master.** Die App ist eine Oberfläche; jede Änderung landet zuerst im Sheet und wird von dort sofort in den Google Kalender übertragen. Die Mannschaft sieht Änderungen im Kalender bzw. – mit Lese-Code – auch in der App.
 
-| Funktion | Beschreibung |
+| Funktion | Kurzbeschreibung |
 |---|---|
-| Termine ansehen | Liste aller kommenden bzw. vergangenen Termine, nach Monaten gruppiert, mit Suche |
-| Termin anlegen | Titel, Datum, Uhrzeit oder ganztägig, Ort, Kategorie, Beschreibung |
-| Termin bearbeiten | alle Felder änderbar |
-| Termin absagen | bleibt im Kalender sichtbar, wird als abgesagt markiert |
-| Termin verschieben | alter Termin bleibt markiert stehen, neuer Termin wird automatisch angelegt |
-| Termin wieder aktivieren | macht Absage/Verschiebung rückgängig |
-| Termin löschen | entfernt den Termin aus dem Kalender |
-| Kompletter Sync | gleicht das ganze Sheet mit dem Kalender ab |
-
-**Leitidee:** Das **Google Sheet ist der Master**. Die App ist nur eine komfortable Oberfläche; jede Änderung landet zuerst im Sheet und wird von dort sofort in den Google Kalender übertragen. Wer den Kalender abonniert hat, sieht Änderungen also direkt.
+| Termine ansehen | Liste (gruppiert: Heute, Diese Woche, Später, Monate) und Wochenansicht |
+| Termin anlegen / bearbeiten | mit Vorlagen und Kategorie-Chips |
+| Absagen | Termin bleibt sichtbar, als abgesagt markiert (auch per Wischen, mit Rückgängig) |
+| Verschieben | alter Termin bleibt markiert, neuer wird automatisch angelegt (Schnellwahl +1/+2 Wochen) |
+| Wieder aktivieren | macht Absage/Verschiebung rückgängig |
+| Löschen | entfernt den Termin aus dem Kalender (nur Admin) |
+| Kategorien verwalten | Name und Kalenderfarbe (nur Admin) |
+| Zugangscodes verwalten | persönliche Codes mit Rolle, Mannschafts-Code (nur Admin) |
+| Kompletter Sync | gleicht das ganze Sheet mit dem Kalender ab (nur Admin) |
 
 ---
 
 ## 2. Nutzer & Nutzungssituation
 
-**Nutzer**
-- **Hauptnutzer:** Person, die den Dienstplan pflegt (Admin, z. B. Gruppenführer/Ausbilder).
-- **Weitere Nutzer:** einzelne Führungskräfte mit eigenem Zugangscode. Alle Nutzer haben aktuell **dieselben Rechte** (es gibt keine Rollen).
-- **Nicht-Nutzer:** Die Mannschaft sieht die Termine im **Google Kalender**, nicht in der App.
+| Nutzer | Rolle | Typische Aufgaben |
+|---|---|---|
+| Person, die den Dienstplan pflegt | Admin | alles, inkl. Verwaltung |
+| Führungskräfte (Gruppenführer, Ausbilder) | Schreiben | Termine anlegen, absagen, verschieben |
+| Mannschaft | Lesen (gemeinsamer Mannschafts-Code) | Termine ansehen |
 
-**Nutzungssituation**
-- Fast ausschließlich **Smartphone**, oft unterwegs, einhändig, zwischendurch.
-- Typische Aufgaben dauern **unter 30 Sekunden**: „Übungsdienst morgen fällt aus“ → absagen; „Besprechung eine Woche später“ → verschieben.
-- Gelegentlich am PC im Browser.
-- Deutschsprachig, Zeitzone Europe/Berlin.
-- Nutzer sind keine IT-Profis → klare Sprache, keine Fachbegriffe, wenig Optionen pro Schritt.
+**Nutzungssituation:** fast nur Smartphone, unterwegs, einhändig, Aufgaben unter 30 Sekunden. Deutschsprachig, Zeitzone Europe/Berlin. Nutzer sind keine IT-Profis.
 
-**Wichtigste Design-Ziele**
-1. Häufige Aktionen (absagen, verschieben) in **maximal 3 Taps**.
-2. Status eines Termins **auf einen Blick** erkennbar (aktiv / abgesagt / verschoben).
-3. Keine versehentlichen Löschungen → Bestätigungen für folgenreiche Aktionen.
-4. Klares Feedback, weil jede Speicherung **2–6 Sekunden** dauert (siehe [15](#15-technische-rahmenbedingungen-für-das-design)).
+**Design-Ziele**
+1. Häufige Aktionen (absagen, verschieben) in höchstens 3 Taps bzw. einer Wischgeste.
+2. Status eines Termins auf einen Blick (aktiv / abgesagt / verschoben) – nie nur über Farbe.
+3. Keine versehentlichen Löschungen: Bestätigungen, Rückgängig, Löschen nur für Admins.
+4. Klares Feedback, weil jede Speicherung 2–6 Sekunden dauert.
+5. Was die Rolle nicht darf, wird gar nicht erst angeboten.
 
 ---
 
 ## 3. Systemarchitektur
 
 ```
-┌──────────────────────────┐      HTTPS POST (JSON)      ┌───────────────────────────┐
-│  PWA (diese App)         │ ──────────────────────────► │  Google Apps Script       │
-│  GitHub Pages            │ ◄────────────────────────── │  (Web-App „Jeder“)        │
-│  lars-menke.github.io/   │      JSON-Antwort           │  WebApp.gs + Sync-Script  │
-│  dienstplan/             │                             └─────────────┬─────────────┘
-└──────────────────────────┘                                           │
-        │ localStorage: Zugangscode,                                   │ liest/schreibt
-        │ letzte Terminliste                                           ▼
-        │ Service Worker: App-Dateien                   ┌───────────────────────────┐
-                                                        │  Google Sheet „DataSheet“ │  ← Master
-                                                        └─────────────┬─────────────┘
-                                                                      │ Sync (sofort pro Zeile
-                                                                      │ + alle 15 Min. komplett)
-                                                                      ▼
-                                                        ┌───────────────────────────┐
-                                                        │  Google Kalender          │ ← Mannschaft
-                                                        └───────────────────────────┘
+┌──────────────────────────┐   HTTPS POST (JSON, text/plain)   ┌───────────────────────────┐
+│  PWA                     │ ────────────────────────────────► │  Google Apps Script        │
+│  GitHub Pages            │ ◄──────────────────────────────── │  Web-App „Jeder“           │
+│  lars-menke.github.io/   │          JSON-Antwort             │  WebApp.gs (Schnittstelle) │
+│  dienstplan/             │                                   │  Dienstplan-Sync.gs (Logik)│
+└──────────────────────────┘                                   └─────────────┬─────────────┘
+   localStorage: Code, Liste,                                                │ liest/schreibt
+   Darstellung, Ansicht                                                      ▼
+   Service Worker: App-Dateien                               ┌───────────────────────────┐
+                                                             │ Google Sheet               │ ← Master
+                                                             │ „DataSheet“ + „Categories“ │
+                                                             └─────────────┬─────────────┘
+                                         Sync: sofort pro Zeile,           │
+                                         alle 15 Min. komplett,            ▼
+                                         nach Kategorie-Änderung ~1 Min.  ┌───────────────────────────┐
+                                                                          │ Google Kalender            │ ← Mannschaft
+                                                                          └───────────────────────────┘
+   Zugangscodes (nur Hash) liegen in den Script-Eigenschaften des Apps-Script-Projekts.
 ```
 
 | Teil | Technik | Ort |
 |---|---|---|
-| Oberfläche | HTML, CSS, Vanilla-JavaScript, kein Framework, kein Build-Schritt | Repository `lars-menke/dienstplan`, GitHub Pages |
-| Schnittstelle | Google Apps Script (`doPost`), Ausführung als Besitzer | Apps-Script-Projekt am Sheet |
-| Logik | Status, Folgetermine, Farben, Kalender-Sync | `Dienstplan-Sync.gs` im selben Projekt |
-| Daten | Google Sheet, Blatt `DataSheet` (+ optional `Categories`) | Google Drive |
+| Oberfläche | HTML, CSS, Vanilla-JavaScript, kein Framework, kein Build | Repository `lars-menke/dienstplan`, GitHub Pages |
+| Schnittstelle | Apps Script `doPost`, ausgeführt als Besitzer | `apps-script/WebApp.gs` (Kopie im Repo) |
+| Logik | Status, Folgetermine, Farben, Kalender-Sync, Sheet-Menü | `apps-script/Dienstplan-Sync.gs` |
+| Daten | Google Sheet, Blätter `DataSheet` und `Categories` | Google Drive |
 | Ausgabe | Google Kalender (Gruppenkalender) | Google Calendar |
 
 ---
 
-## 4. Datenmodell
+## 4. Rollen & Rechte
 
-### 4.1 Termin, wie die App ihn bekommt
+| Aktion | Lesen | Schreiben | Admin |
+|---|:-:|:-:|:-:|
+| Liste, Woche, Details ansehen | ✓ | ✓ | ✓ |
+| Termin anlegen, bearbeiten | | ✓ | ✓ |
+| Absagen, verschieben, wieder aktivieren | | ✓ | ✓ |
+| **Löschen** | | | ✓ |
+| Kategorien verwalten | | | ✓ |
+| Zugangscodes verwalten | | | ✓ |
+| Kompletter Sync | | | ✓ |
+| Darstellung umschalten | ✓ | ✓ | ✓ |
 
-Jeder Termin kommt als JSON-Objekt von der Schnittstelle:
+**Regeln**
+- Die Rolle hängt am Zugangscode.
+- **Der Server prüft die Rolle bei jeder Anfrage** (die Schnittstelle ist öffentlich erreichbar). Die App blendet zusätzlich aus, was nicht erlaubt ist.
+- Unerlaubte Aktion → `{ "ok": false, "error": "Dafür fehlen dir die Rechte.", "forbidden": true }`; die App zeigt einen Toast und meldet **nicht** ab.
+
+**Was die App je Rolle zeigt**
+
+| Element | Lesen | Schreiben | Admin |
+|---|---|---|---|
+| FAB „+ Termin“ | – | ✓ | ✓ |
+| Detail-Sheet | Infos, Hinweis „Du kannst Termine ansehen …“, [Schließen] | Absagen, Verschieben, Bearbeiten | + [Löschen] |
+| Wischgesten auf Karten | – | ✓ | ✓ |
+| „Weitere Aktionen“ | Name, Darstellung, Abmelden | wie Lesen | + Kennzeichen ADMIN, Verwaltung, kompletter Sync |
+
+---
+
+## 5. Zugangscodes
+
+### 5.1 Datenmodell (Script-Eigenschaft `ZUGANGSCODES_V2`)
+
+| Feld | Beispiel | Bedeutung |
+|---|---|---|
+| `id` | `c_8f3a…` | interne ID |
+| `name` | `Gruppenführer 1` | erscheint bei „Letzte Änderung“ |
+| `role` | `admin` · `write` · `read` | Rolle |
+| `team` | `true` | Mannschafts-Code (gemeinsam, Rolle immer `read`), höchstens einer |
+| `hash` | SHA-256 (hex) des normalisierten Codes | der Code selbst wird **nicht** gespeichert |
+| `hint` | `K7QM…H2XP` | erste und letzte 4 Zeichen, nur zur Anzeige |
+| `blocked` | `false` / ISO-Zeit | gesperrt seit |
+| `created`, `lastUsed` | ISO-Zeit | `lastUsed` höchstens stündlich geschrieben |
+
+- Format: 20 Zeichen aus 31 eindeutig lesbaren Zeichen (ohne 0/O, 1/I/L), angezeigt als `XXXX-XXXX-XXXX-XXXX-XXXX`.
+- Der **vollständige Code ist nur direkt nach dem Erstellen sichtbar** (auch der Link). Danach nur noch der Hinweis.
+- Anmelde-Link: `https://lars-menke.github.io/dienstplan/#code=XXXXXXXXXXXXXXXXXXXX` – meldet beim Öffnen direkt an; der Code wird aus der Adresse entfernt.
+
+### 5.2 Schutzregeln
+- Den **eigenen Code** kann man weder sperren, herabstufen noch löschen.
+- Der **letzte aktive Admin** bleibt immer Admin (nicht sperr-, herabstuf- oder löschbar).
+- Gesperrte Codes werden wie ungültige behandelt (`auth: true`).
+- Falsche Codes werden serverseitig um ca. 0,8 s ausgebremst.
+
+### 5.3 Mannschafts-Code
+- Gemeinsamer Lese-Code für die Mannschaft. **Neu erzeugen** macht den alten sofort ungültig und liefert neuen Code samt Link (mit Bestätigung).
+- Wird nicht gesperrt, sondern neu erzeugt oder gelöscht.
+- Weil nur der Hash gespeichert ist, gibt es den Link **nur direkt nach dem Erzeugen**; die Karte weist darauf hin.
+
+---
+
+## 6. Datenmodell
+
+### 6.1 Termin (wie die App ihn bekommt)
 
 | Feld | Typ | Beispiel | Bedeutung |
 |---|---|---|---|
-| `row` | Zahl | `14` | Zeilennummer im Sheet (interne Referenz) |
-| `eventId` | Text | `"a1b2c3…"` | ID des Kalendertermins, leer = noch nicht im Kalender |
+| `row` | Zahl | `14` | Zeile im Sheet (interne Referenz) |
+| `eventId` | Text | `"a1b2…"` | ID des Kalendertermins; leer = noch nicht im Kalender |
 | `subject` | Text | `"Übungsdienst: Atemschutz"` | Titel (Pflicht, max. 200 Zeichen) |
-| `date` | ISO-Datum | `"2026-11-12"` | Startdatum |
-| `endDate` | ISO-Datum | `"2026-11-12"` | Enddatum (= `date` bei eintägigen Terminen) |
+| `date`, `endDate` | ISO-Datum | `"2026-11-12"` | Beginn, Ende (= `date` bei eintägig) |
 | `allDay` | Ja/Nein | `false` | ganztägig |
-| `start` | `HH:MM` | `"19:30"` | Beginn (leer bei ganztägig) |
-| `end` | `HH:MM` | `"21:30"` | Ende (optional; ohne Ende = 60 Minuten) |
-| `location` | Text | `"Feuerwehrhaus"` | Ort (optional) |
-| `description` | Text, mehrzeilig | `"PA mitbringen"` | Beschreibung (optional) |
-| `category` | Text | `"Übung"` | Kategorie (optional, steuert die Kalenderfarbe) |
-| `status` | Text | `"AKTIV"` | siehe [5](#5-status-logik) |
-| `recurring` | Ja/Nein | `false` | Serientermin (Wiederholung) |
-| `verschobenAuf` | Text | `"19.11.2026, 19:00 Uhr"` | Ziel der Verschiebung (nur bei VERSCHOBEN) |
-| `folgetermin` | Ja/Nein | `true` | neuer Termin wurde bereits angelegt |
-| `synced` | Ja/Nein | `true` | Termin steht im Kalender |
-| `lastChange` | Text | `"06.11.2026 18:12 · Lars"` | letzte Änderung über die App, mit Name |
+| `start`, `end` | `HH:MM` | `"19:30"` | Uhrzeiten (leer bei ganztägig; ohne Ende = 60 Min.) |
+| `location` | Text | `"Feuerwehrhaus"` | Ort |
+| `description` | Text | `"PA mitbringen"` | Beschreibung, mehrzeilig |
+| `category` | Text | `"Übung"` | Kategorie (siehe Kapitel 8) |
+| `status` | Text | `"AKTIV"` | siehe Kapitel 7 |
+| `recurring` | Ja/Nein | `false` | Serientermin |
+| `verschobenAuf` | Text | `"19.11.2026, 19:00 Uhr"` | Ziel der Verschiebung |
+| `folgetermin` | Ja/Nein | `true` | neuer Termin bereits angelegt |
+| `synced` | Ja/Nein | `true` | steht im Kalender |
+| `lastChange` | Text | `"06.11.2026 18:12 · Lars"` | letzte Änderung über die App |
 
-Zusätzlich liefert jede Antwort:
+Termine mit Status GELÖSCHT werden nicht geliefert. Typische Mengen: 150–300 Termine/Jahr, 3 Kategorien.
 
-| Feld | Bedeutung |
-|---|---|
-| `categories` | Liste der verfügbaren Kategorien (aus Blatt `Categories`), kann leer sein |
-| `today` | heutiges Datum laut Server |
-| `user` | Name zum verwendeten Zugangscode |
-| `message` | Rückmeldung nach einer Änderung, z. B. „Termin abgesagt.“ |
-| `warning` | `true`, wenn im Sheet gespeichert, aber der Kalender nicht aktualisiert werden konnte |
+### 6.2 Sheet `DataSheet` – Spalten
+`Subject`, `Start Date`, `Start Time`, `End Date`, `End Time`, `All Day Event`, `Description`, `Location`, `Category`, `Recurrence` (optional), `Status`, `Verschoben auf`, `Folgetermin-ID`, `EventId`, `LastSyncHash`, `Letzte Änderung`.
 
-### 4.2 Typische Mengen
-- **50–300 Termine** pro Jahr, die meisten mit Uhrzeit.
-- Titel meist **15–40 Zeichen**, teils länger.
-- Beschreibung oft leer, manchmal mehrere Zeilen.
-- Kategorien: **0–10** (z. B. Übung, Ausbildung, Einsatz, Versammlung).
-- Gelöschte Termine (Status GELÖSCHT) werden der App **nicht** geliefert.
-
-### 4.3 Kategorien → Kalenderfarben
-Kategorien werden im Sheet-Blatt `Categories` gepflegt (Spalten `Category`, `ColorId`). Die Farbe gilt **im Google Kalender**; die App zeigt die Kategorie aktuell nur als neutrales Badge.
-
-Verfügbare Google-Kalender-Farben (ColorId): 1 Lavendel · 2 Salbei · 3 Weintraube · 4 Flamingo · 5 Banane · 6 Mandarine · 7 Pfau · 8 Graphit · 9 Heidelbeere · 10 Basilikum · 11 Tomate.
+`LastSyncHash` enthält alle Felder, die im Kalender sichtbar sind – inklusive **Kategorie und ColorId** –, damit der normale Sync jede Änderung erkennt.
 
 ---
 
-## 5. Status-Logik
+## 7. Status-Logik
 
-| Status | Bedeutung | Im Kalender | In der App heute |
+| Status | Bedeutung | Im Kalender | In der App |
 |---|---|---|---|
-| **AKTIV** | normaler Termin | normal, Kategoriefarbe | rote Datumskachel, normaler Text |
-| **ABGESAGT** | fällt aus, bleibt sichtbar | Titel „❌ ABGESAGT: …“, Farbe Graphit (grau), Hinweis in der Beschreibung | graue Datumskachel, Titel durchgestrichen, Badge „Abgesagt“ |
-| **VERSCHOBEN** | auf anderes Datum verlegt | am alten Datum: Titel „↪️ VERSCHOBEN auf 19.11. 19:00: …“, Farbe Mandarine (orange) | orange Datumskachel, Badge „Verschoben → 19.11.2026, 19:00 Uhr“ |
-| **LÖSCHEN** | soll entfernt werden (Übergang) | wird gelöscht | Badge „Wird gelöscht“ (nur kurz sichtbar) |
-| **GELÖSCHT** | entfernt | nicht mehr vorhanden | nicht sichtbar |
-
-**Übergänge**
+| **AKTIV** | normaler Termin | Kategoriefarbe | rote/gelbe Datumskachel, Badge „● Aktiv“ im Detail |
+| **ABGESAGT** | fällt aus, bleibt sichtbar | „❌ ABGESAGT: …“, Graphit (8), Hinweis in der Beschreibung | graue Kachel, Titel durchgestrichen, Badge „Abgesagt“ |
+| **VERSCHOBEN** | verlegt | „↪️ VERSCHOBEN auf 19.11. 19:00: …“, Mandarine (6) | orange Kachel, Badge „Verschoben auf Di 17.11.“ |
+| **LÖSCHEN** | Übergang | wird gelöscht | Badge „Wird gelöscht“ (kurz) |
+| **GELÖSCHT** | entfernt | – | nicht sichtbar |
 
 ```
-            Absagen                    Löschen
-  AKTIV ─────────────► ABGESAGT ─────────────► GELÖSCHT
-    │  ▲                  │                       ▲
-    │  └── Wieder ────────┘                       │
-    │      aktivieren                             │
-    │  Verschieben (+ neues Datum)                │
-    └─────────────► VERSCHOBEN ───────────────────┘
-                      │  └─► erzeugt automatisch einen NEUEN Termin (AKTIV)
-                      └── Wieder aktivieren → AKTIV (neuer Termin bleibt bestehen!)
+            Absagen (auch Wischen ←)          Löschen (Admin)
+  AKTIV ─────────────────────► ABGESAGT ───────────────────► GELÖSCHT
+    │  ▲                          │                             ▲
+    │  └── Wieder aktivieren / Rückgängig                       │
+    │  Verschieben (+ neues Datum, auch Wischen →)              │
+    └────────────────────► VERSCHOBEN ──────────────────────────┘
+                              └─► legt automatisch einen NEUEN Termin (AKTIV) an
 ```
 
-**Besonderheiten, die das Design abbilden muss**
-- **Verschieben erzeugt zwei Termine:** den alten (markiert, bleibt am alten Datum sichtbar) und einen neuen (normal). Der neue bekommt in der Beschreibung „(verschoben vom 12.11.2026)“.
-- Ohne neue Uhrzeit übernimmt der neue Termin **Uhrzeit und Dauer** des alten.
-- Wird ein verschobener Termin **wieder aktiviert**, bleibt der neue Termin bestehen → Nutzer muss ihn ggf. selbst absagen/löschen (wird per Bestätigung erklärt).
-- **Serientermine** (`recurring`): Änderungen gelten für die ganze Serie. Einzelne Serientermine lassen sich in V1 nicht getrennt bearbeiten.
-- **Absagen ist der Normalfall**, Löschen die Ausnahme (die Mannschaft soll sehen, dass etwas ausfällt).
+- Der neue Termin bekommt in der Beschreibung „(verschoben vom 12.11.2026)“; ohne neue Uhrzeit übernimmt er Uhrzeit und Dauer.
+- Wieder aktivieren eines verschobenen Termins: Der neue Termin bleibt bestehen (Hinweis per Bestätigung).
+- Serientermine: Änderungen gelten für die ganze Serie.
+- Absagen ist der Normalfall, Löschen die Ausnahme.
 
 ---
 
-## 6. Screens & Abläufe
+## 8. Kategorien – App, Sheet, Kalender
 
-### 6.1 Übersicht
+### 8.1 Speicherort und Bestand
+Blatt **`Categories`** mit `Category`, `ColorId`, `Farbe` (Formel, zeigt den Farbnamen; farbige Vorschau). In `DataSheet` hat die Spalte `Category` eine Auswahlliste aus diesem Blatt. Einrichten: Sheet-Menü „🏷️ Kategorien einrichten“.
 
-```
-                 ┌──────────────┐
-  Anmelde-Link ─►│  Anmeldung   │◄── Code ungültig / gesperrt / Abmelden
-  (#code=…)      └──────┬───────┘
-                        │ gültiger Code
-                        ▼
-                 ┌──────────────┐  Tap auf Karte  ┌──────────────┐
-                 │ Terminliste  │ ──────────────► │   Details    │
-                 │ (Hauptscreen)│                 └──┬───┬───┬───┘
-                 └──┬───────┬───┘                    │   │   │
-           „＋ Termin“│     │ „⋯“            Bearbeiten Verschieben Absagen/Löschen/
-                    ▼       ▼                    │   │      Wieder aktivieren
-             ┌──────────┐ ┌──────────┐           ▼   ▼          ▼
-             │ Formular │ │ Weitere  │     ┌──────────┐ ┌──────────┐ ┌──────────────┐
-             │  (neu)   │ │ Aktionen │     │ Formular │ │Verschiebe│ │ Bestätigung  │
-             └──────────┘ └──────────┘     │(bearb.)  │ │ -Dialog  │ └──────────────┘
-                                           └──────────┘ └──────────┘
-```
+**Festgelegte Kategorien (bewusst nur drei):**
 
-Alle Unter-Screens sind **Bottom Sheets** über der Liste (kein Seitenwechsel, kein Router, kein Zurück-Button des Browsers).
-
-### 6.2 Anmeldung
-- Vollflächig in Akzentrot, App-Icon (88 px), Titel „Dienstplan“, kurzer Hinweistext.
-- Eingabefeld für den Zugangscode: Monospace, Großbuchstaben, zentriert, Platzhalter `XXXX-XXXX-XXXX-XXXX-XXXX`. Bindestriche und Leerzeichen werden ignoriert.
-- Button „Anmelden“ → Ladezustand „Prüfe…“ → bei Erfolg direkt in die Liste.
-- Fehlermeldung unter dem Button (z. B. „Zugangscode ungültig oder gesperrt.“).
-- **Alternativer Einstieg:** Anmelde-Link `…/dienstplan/#code=XXXX` → Code wird gespeichert, aus der Adresse entfernt, Anmeldung übersprungen.
-- **Sonderfall:** Fehlt in `config.js` der Server-Link, zeigt die Anmeldeseite „Die App ist noch nicht eingerichtet …“ ohne Eingabefeld.
-
-### 6.3 Terminliste (Hauptscreen)
-**Kopfzeile (fixiert beim Scrollen)**
-- Links: „🚒 Dienstplan“ (22 px, fett) + Unterzeile „Feuerwehr Kalender-Sync“.
-- Rechts: Icon-Buttons „⋯“ (Weitere Aktionen) und „↻“ (Neu laden), je 42×42 px.
-- Darunter: Segment-Umschalter **Kommend | Vergangen** + Suchfeld.
-- Optional: gelber Hinweis-Streifen bei veralteten Daten (siehe [9](#9-zustände-laden-leer-fehler-offline)).
-
-**Liste**
-- Gruppiert nach Monat: Überschrift in Versalien, z. B. „NOVEMBER 2026“.
-- „Kommend“: aufsteigend ab heute (ein Termin gilt als kommend, solange sein Enddatum ≥ heute ist).
-- „Vergangen“: absteigend, neueste zuerst.
-- Suche filtert live über Titel, Ort, Beschreibung und Kategorie.
-- Jede Zeile ist eine **Terminkarte** (siehe [7.1](#71-terminkarte)).
-
-**Floating Action Button** unten rechts: „＋ Termin“ (56 px hoch, Akzentrot).
-
-**Verhalten**
-- Beim Start wird sofort die zuletzt gespeicherte Liste gezeigt und im Hintergrund aktualisiert.
-- Kommt die App nach mehr als 60 Sekunden aus dem Hintergrund zurück, lädt sie automatisch neu.
-
-### 6.4 Details (Bottom Sheet)
-Inhalt von oben nach unten:
-1. Titel (20 px, fett) + Badges
-2. 📅 Langes Datum („Donnerstag, 12. November 2026“) + Zeitangabe
-3. 📍 Ort (falls vorhanden)
-4. 📝 Beschreibung, mehrzeilig (falls vorhanden)
-5. Info-Kästen je nach Status:
-   - VERSCHOBEN: orange „↪️ Verschoben auf **19.11.2026, 19:00 Uhr**. Der neue Termin ist angelegt.“
-   - ABGESAGT: grau „❌ Abgesagt. Der Termin bleibt im Kalender sichtbar.“
-   - Serie: „🔁 Serientermin – Änderungen gelten für die ganze Serie.“
-6. Aktionen:
-   - **AKTIV:** [Bearbeiten] (primär, volle Breite) · [Verschieben] [Absagen] (nebeneinander)
-   - **ABGESAGT / VERSCHOBEN:** [Wieder aktivieren] (primär) · [Bearbeiten]
-   - immer: [Löschen] (Textbutton, Gefahrfarbe)
-7. Kleingedruckt: „Letzte Änderung: 06.11.2026 18:12 · Lars“
-
-### 6.5 Formular „Neuer Termin“ / „Termin bearbeiten“
-| Feld | Steuerelement | Standard (neu) | Regeln |
-|---|---|---|---|
-| Titel | Textfeld | leer, Platzhalter „z. B. Übungsdienst“ | Pflicht, Fokus beim Öffnen |
-| Ganztägig | Checkbox | aus | blendet die Uhrzeiten aus |
-| Datum / Bis | 2 × Datumsfeld nebeneinander | heute / heute | „Bis“ wandert mit, solange der Termin eintägig ist |
-| Beginn / Ende | 2 × Uhrzeitfeld nebeneinander | 19:00 / 21:00 | Beginn Pflicht (wenn nicht ganztägig), Ende nach Beginn |
-| Ort | Textfeld | leer, „z. B. Feuerwehrhaus“ | optional |
-| Kategorie | Auswahlliste | „– keine –“ | nur sichtbar, wenn Kategorien existieren |
-| Beschreibung | mehrzeiliges Feld | leer | optional |
-
-Buttons: [Anlegen]/[Speichern] (primär) · [Abbrechen] (zurück zu den Details bzw. schließen).
-Bei Serienterminen zusätzlich der Serien-Hinweis.
-
-### 6.6 Verschieben-Dialog
-- Titel „Verschieben“, darunter „Dienstbesprechung · bisher 12.11.2026, 19:00 Uhr“.
-- Felder: **Neues Datum** (vorbelegt mit altem Datum) + **Uhrzeit** (vorbelegt mit alter Uhrzeit; entfällt bei ganztägigen Terminen).
-- Info: „Der alte Termin bleibt als ‚verschoben' im Kalender sichtbar. Der neue Termin wird automatisch angelegt.“
-- Falls schon ein Folgetermin existiert: orange Warnung „… Es wird nur die Markierung geändert.“
-- Buttons: [Verschieben] (orange) · [Abbrechen].
-- Prüfung: Datum Pflicht; identisches Datum + Uhrzeit → „Das ist noch der alte Termin.“
-
-### 6.7 Bestätigungen
-Einheitliches Bottom Sheet: Titel, erklärender Satz, [Aktion] (primär) · [Zurück].
-
-| Auslöser | Titel | Text | Button |
-|---|---|---|---|
-| Absagen | Termin absagen? | „… bleibt im Kalender sichtbar und wird als abgesagt markiert.“ | Absagen |
-| Löschen | Termin löschen? | „… wird aus dem Kalender entfernt. Wenn er nur ausfällt, ist ‚Absagen' meist besser – dann sehen es alle.“ | Endgültig löschen |
-| Wieder aktivieren (mit Folgetermin) | Wieder aktivieren? | „Der bereits angelegte neue Termin bleibt bestehen …“ | Wieder aktivieren |
-| Abmelden | Abmelden? | „Auf diesem Gerät musst du danach den Zugangscode neu eingeben.“ | Abmelden |
-
-Wieder aktivieren **ohne** Folgetermin passiert ohne Bestätigung.
-
-### 6.8 Weitere Aktionen („⋯“)
-- „Angemeldet als **Lars**“
-- [Alle Termine jetzt synchronisieren]: kompletter Abgleich Sheet → Kalender (kann 10–60 s dauern)
-- [Abmelden]
-- [Schließen]
-- Erklärung: Der komplette Sync ist nur für Änderungen nötig, die direkt im Sheet gemacht wurden.
-
-### 6.9 Rückmeldungen (Toast)
-- Unten über dem FAB, 3 s (Erfolg, dunkelgrau) bzw. 6 s (Fehler, dunkelrot).
-- Beispiele: „Termin abgesagt.“ · „Termin verschoben – der neue Termin ist angelegt.“ · „Gespeichert.“ · „Termin angelegt.“
-- Bei `warning`: Fehler-Optik mit „Im Sheet gespeichert, aber der Kalender konnte nicht aktualisiert werden: …“
-
----
-
-## 7. Komponenten
-
-### 7.1 Terminkarte
-```
-┌──────────────────────────────────────────────┐
-│ ┌─────┐  Übungsdienst: Atemschutz            │
-│ │ FR  │  19:30–21:30 Uhr · Feuerwehrhaus     │
-│ │  6  │  [Übung] [🔁 Serie]                  │
-│ │ Nov │                                      │
-│ └─────┘                                      │
-└──────────────────────────────────────────────┘
-```
-- Ganze Karte ist ein Button (öffnet Details), leichte Verkleinerung beim Antippen.
-- **Datumskachel** 52 px breit: Wochentag (11 px, fett, Versalien), Tag (22 px, fett), Monat (11 px). Farbe nach Status (rot/grau/orange).
-- **Titel** 16 px, halbfett, bricht um.
-- **Metazeile** 14 px, gedämpft: Zeitangabe · Ort.
-- **Badges** (12 px, Pillenform): Abgesagt · Verschoben → … · Wird gelöscht · 🔁 Serie · Kategorie · Noch nicht im Kalender.
-
-**Zeitangaben**
-| Fall | Anzeige |
-|---|---|
-| mit Ende | `19:30–21:30 Uhr` |
-| ohne Ende | `19:30 Uhr` |
-| ganztägig | `Ganztägig` |
-| mehrtägig ganztägig | `Ganztägig bis 14.11.` |
-| mehrtägig mit Uhrzeit | `19:00–12:00 Uhr (bis 15.11.)` |
-
-### 7.2 Bottom Sheet
-- Von unten einfahrend (250 ms, ease-out), max. 90 % Höhe, scrollbar, oben 20 px Radius, Griff-Strich.
-- Abgedunkelter Hintergrund (42 % Schwarz); Tap darauf oder Escape schließt (nicht während des Speicherns).
-- Max. 640 px breit, zentriert auf großen Bildschirmen.
-
-### 7.3 Buttons
-| Variante | Optik | Verwendung |
+| Kategorie | Farbe | Beispiele |
 |---|---|---|
-| Primär | Akzentrot, weißer Text | Hauptaktion pro Sheet |
-| Warnung | Orange-Hintergrund, orange Text | Verschieben |
-| Standard | Fläche 2, Rahmen | Nebenaktionen, Abbrechen |
-| Gefahr | nur Text, Gefahrfarbe | Löschen |
-| Icon | 42×42, Rahmen | Kopfzeile |
-| FAB | 56 px hoch, rot, Schatten | Neuer Termin |
+| Übung | Tomate (11) | 1. Gruppe, Übungsdienst, Atemschutz, Maschinist |
+| Besprechung | Pfau (7) | Ortskommando, Stadtkommando, Gruppenführer-Dienstbesprechung |
+| Tradition | Banane (5) | Himmelfahrt, Gildefest, Jahreshauptversammlung, Volkstrauertag |
 
-Alle Buttons mindestens **48 px hoch**. Beim Speichern: alle Buttons im Sheet gesperrt, der gedrückte zeigt einen Kreisel + „Wird gespeichert…“.
+Termine ohne passende Kategorie bleiben ohne. „🏷️ Kategorien vorschlagen und eintragen…“ schlägt Kategorien anhand von Stichwörtern im Titel vor (`CONFIG.CATEGORY_RULES`, Besprechung vor Übung) und trägt sie auf Knopfdruck nur bei leeren Kategorien ein.
 
-### 7.4 Formularfelder
-46 px hoch, 10 px Radius, Fläche 2, 16 px Schrift (verhindert Zoom auf iOS), Label darüber (13 px, halbfett, gedämpft). Native Datums-/Uhrzeit-Auswahl des Systems.
+### 8.2 Farben
+Erlaubt sind die Google-Kalender-Farben; **Mandarine (6) und Graphit (8) sind reserviert** für „Verschoben“ und „Abgesagt“.
 
-### 7.5 Info-Kasten
-Abgerundeter Kasten (12 px Radius, 14 px Text) in neutral oder orange (Warnung).
+| ColorId | Name | Hex (Hell) | Punkt im Dunkelmodus |
+|---|---|---|---|
+| 1 | Lavendel | `#7986cb` | `#7986cb` |
+| 2 | Salbei | `#33b679` | `#33b679` |
+| 3 | Weintraube | `#8e24aa` | `#8e24aa` |
+| 4 | Flamingo | `#e67c73` | `#e67c73` |
+| 5 | Banane | `#f6bf26` | `#f6bf26` |
+| 6 | Mandarine | `#f4511e` | – reserviert – |
+| 7 | Pfau | `#039be5` | `#039be5` |
+| 8 | Graphit | `#616161` | – reserviert – |
+| 9 | Heidelbeere | `#3f51b5` | `#7986cb` |
+| 10 | Basilikum | `#0b8043` | `#33b679` |
+| 11 | Tomate | `#d50000` | `#ff5a4f` |
+
+In der Farbauswahl stehen immer die echten Google-Farben; nur die Punkte in Liste und Woche werden im Dunkelmodus aufgehellt.
+
+### 8.3 Kategorie im Kalender
+1. **Terminfarbe** = ColorId (nur in Google Kalender sichtbar; Apple Kalender/iCal-Abos zeigen keine Farben).
+2. **Erste Zeile der Beschreibung:** `Kategorie: Übung`, Leerzeile, dann Status-Hinweis und Beschreibung. Steht nicht in der Sheet-Spalte `Description`, sondern entsteht beim Schreiben in den Kalender.
+3. Der Titel bleibt ohne Kategorie.
+
+### 8.4 Ändern, Umbenennen, Löschen
+- **Neu:** Name Pflicht, eindeutig (Groß/Klein egal), max. 40 Zeichen; Farbe Pflicht.
+- **Farbe ändern / Umbenennen:** Umbenennen ändert auch alle Zeilen in `DataSheet`. Danach plant der Server einen **einmaligen kompletten Sync in ca. 1 Minute** (Trigger `runScheduledRefresh`). Meldung: „Gespeichert. Der Kalender wird in den nächsten Minuten aktualisiert.“
+- **Löschen:** nur wenn kein Termin (Status ≠ GELÖSCHT) sie nutzt, sonst „Wird von 12 Terminen genutzt – erst die Termine umstellen.“
 
 ---
 
-## 8. Design-Tokens (aktuell)
+## 9. Screens & Abläufe
 
-### 8.1 Farben
+Unter-Screens sind **Bottom Sheets** über der Liste; die Verwaltung (Kategorien, Zugangscodes) sind eigene **Seiten** mit Zurück-Knopf. Sheets und Seiten legen einen Eintrag im Browser-Verlauf an und schließen mit der Zurück-Taste (siehe Kapitel 10).
+
+### 9.1 Anmeldung (`Anmeldung`)
+Rote Vollfläche, unabhängig vom Theme. Logo, „Dienstplan“, Erklärsatz, Feld „Zugangscode“ (Monospace, Großbuchstaben, Bindestriche egal), [Anmelden], Hinweis zum Anmelde-Link. Fehlermeldung unter dem Knopf. Alternativ Anmelde-Link `#code=…`.
+
+### 9.2 Terminliste (`Main`)
+- **Kopfzeile:** Logo, „Dienstplan“, darunter Sync-Stand („✓ Im Kalender · Stand 08:31“ bzw. „Wird gespeichert…“ / „Offline · Stand …“), Knöpfe ↻ (neu laden, zeigt auch Ziehen-zum-Aktualisieren) und ⋯ (Weitere Aktionen).
+- Umschalter **Liste | Woche** (gemerkt in `dienstplan.view`) und Knopf **Heute**.
+- Suchfeld (Titel, Ort, Beschreibung, Kategorie; durchsucht auch vergangene Termine).
+- Gelber Offline-Streifen bei veraltetem Stand.
+- Liste: Textknopf **„Vergangene Termine“** (klappt vergangene Monate oberhalb auf), einmaliger Wisch-Hinweis (Schreiben/Admin), Gruppen **HEUTE** (Akzent-Etikett + Datum), **DIESE WOCHE**, **SPÄTER IM <MONAT>**, danach Monate.
+- Karte von heute: Akzentrahmen, volle Akzent-Datumskachel.
+- Badges: Kategorie mit Farbpunkt, Serie, „Verschoben auf …“, „vom … verschoben“ (Folgetermin), „Noch nicht im Kalender“.
+- FAB „+ Termin“ (Schreiben/Admin).
+
+### 9.3 Wochenansicht (`Woche`)
+- Wochennavigation ‹ › mit „9.–15. November“ und „KW 46 · nächste Woche“ (diese/letzte Woche, in/vor n Wochen).
+- Tagesstreifen Mo–So mit bis zu 3 Punkten (Kategorie- bzw. Statusfarbe); gewählter Tag mit Akzent gefüllt, heute in Akzentfarbe.
+- Darunter alle 7 Tage: „Kein Termin“ oder kompakte Karten („Zeit · Ort“ bzw. „· Verschoben auf …“ / „· Abgesagt“). Tippen öffnet Details.
+- Startet mit der Woche von heute; „Heute“ springt zurück; Tag antippen springt zum Tag.
+- „+ Termin“ übernimmt den gewählten Tag als Datum.
+- Waagerechtes Wischen wechselt die Woche (Kapitel 10).
+
+### 9.4 Details (`Details`, `DetailsLesen`)
+- Oben Status-Badge („● Aktiv“, „Abgesagt“ …), Kategorie, Serie; Titel 22 px; Schließen-Knopf.
+- Fakten: Datum („Heute · Freitag, 6. November 2026“), Uhrzeit, Ort, Beschreibung; Hinweis-Kästen (Serie, abgesagt, verschoben auf …).
+- **Schreiben/Admin, AKTIV:** Kacheln **Absagen** | **Verschieben** (72 px), **Bearbeiten** (primär), unten „Letzte Änderung …“ und [Löschen] (nur Admin).
+- **ABGESAGT/VERSCHOBEN:** [Wieder aktivieren] (primär), [Bearbeiten].
+- **Lesen:** Hinweis „Du kannst Termine ansehen. Änderungen macht, wer den Dienstplan pflegt.“, [Schließen], „Letzte Änderung …“.
+
+### 9.5 Verschieben (`Verschieben`)
+Schnellwahl **+1 Woche** (vorgewählt, mit Zieldatum) · **+2 Wochen** · **Anderer Tag**; Felder neues Datum und Uhrzeit; **Vorschau** „Alter Termin bleibt sichtbar – als ‚Verschoben auf 13.11.‘“ / „Neuer Termin wird angelegt – 19:30–21:30 Uhr · Ort“; Hauptknopf „Auf Fr 13.11. verschieben“. Hinweis, falls schon ein Folgetermin existiert.
+
+### 9.6 Neuer Termin / Bearbeiten (`Formular`)
+- **Vorlagen** (nur bei „Neuer Termin“) als Chips, fest in `config.js` → `TEMPLATES`:
+
+  | Vorlage | Titel-Anfang | Zeit | Ort | Kategorie |
+  |---|---|---|---|---|
+  | Übungsdienst | „Übungsdienst: “ | 19:30–21:30 | Feuerwehrhaus | Übung |
+  | Gruppendienst | „Gruppendienst: “ | 09:00–12:00 | Feuerwehrhaus | Ausbildung* |
+  | Besprechung | „Besprechung: “ | 19:00 | Schulungsraum | Besprechung |
+  | Leer | – | 19:00–21:00 | – | – |
+
+  \* Gibt es die Kategorie nicht (mehr), bleibt sie leer.
+- Titel, Schalter „Ganztägig“, Datum/Bis, Beginn/Ende, Ort, **Kategorie als Farb-Chips** (aus `categoryList`, plus „Keine“), Beschreibung.
+- [Abbrechen] und [Anlegen]/[Speichern] fest am unteren Rand.
+
+### 9.7 Weitere Aktionen (`Aktionen`)
+Avatar mit Initiale, „Angemeldet als **Lars**“ (+ „ADMIN“); **Darstellung** Hell · Dunkel · Systemeinstellung („Gilt nur auf diesem Gerät.“); **Verwaltung** (Admin): Kategorien (Anzahl) ›, Zugangscodes (Anzahl) ›; [Alle Termine jetzt synchronisieren] mit Erklärung (Admin); [Abmelden] mit Bestätigung.
+
+### 9.8 Kategorien (`Kategorien`, `KategorieBearbeiten`)
+Seite: Liste mit Farbkreis, Name, „Tomate · 38 Termine“ bzw. „nicht genutzt“; gestrichelter Knopf [Kategorie hinzufügen]; Info-Kasten (Farbe + Beschreibungszeile).
+Sheet: Name; Farbraster (6 Spalten, Auswahl mit Ring + Haken; Mandarine/Graphit gestrichelt und gesperrt); Hinweis zu betroffenen Terminen; [Abbrechen] [Speichern]; [Löschen] deaktiviert, solange genutzt.
+
+### 9.9 Zugangscodes (`Zugangscodes`, `CodeNeu`)
+- **Mannschaft:** Badge „Lesen“, Hinweis `K7QM-····-····-····-H2XP`, „Gemeinsamer Code · zuletzt genutzt …“, Hinweis zum Link, [Neu erzeugen] (mit Bestätigung) und [Bearbeiten] (Name, Löschen). Ohne Mannschafts-Code: [Mannschafts-Code erzeugen].
+- **Persönliche Codes:** Name (durchgestrichen, wenn gesperrt), „Dieses Gerät“ / „zuletzt genutzt …“ / „gesperrt am …“, Rollen-Badge (Admin dunkel bzw. gelb, Schreiben blau, Lesen/Gesperrt grau).
+- Antippen: Name, Rolle, [Speichern], [Sperren]/[Entsperren], [Löschen] (mit Bestätigung); beim eigenen Code nur Name.
+- FAB „+ Code“: „Für wen?“, Rolle mit Erklärung, Hinweis „nur einmal vollständig angezeigt“, [Code erstellen].
+- Nach dem Erstellen/Erzeugen: Code groß in Monospace, [Link teilen] (`navigator.share`, sonst Kopieren), [Fertig].
+
+### 9.10 Bestätigungen
+Einheitliches Sheet: Titel, ein erklärender Satz, [Aktion] (primär), [Zurück]. Für: Absagen (aus Details), Löschen, Wieder aktivieren mit Folgetermin, Abmelden, Kategorie löschen, Code sperren/löschen, Mannschafts-Code neu erzeugen/löschen.
+
+---
+
+## 10. Gesten
+
+| Geste | Wo | Wirkung | Regeln |
+|---|---|---|---|
+| Karte **nach links** wischen | Liste, Schreiben/Admin, aktive Termine | sofort **Absagen**, Toast „Termin abgesagt.“ mit **[Rückgängig]** (6 s → `setStatus AKTIV`) | Schwelle 35 % der Kartenbreite; Karte zeigt „Wird abgesagt…“, Kopf „Wird gespeichert…“ |
+| Karte **nach rechts** wischen | wie oben | **Verschieben**-Dialog | – |
+| Waagerecht wischen | Wochenansicht (Streifen und Tagesliste) | Woche vor/zurück | ab 60 px; Inhalt folgt dem Finger, federt sonst zurück |
+| **Nach unten ziehen** | ganz oben in Liste und Woche | neu laden | Inhalt rutscht mit (45 % Widerstand); auslösen erst ab ≈ 210 px Fingerweg **und** 0,25 s Halten; schnelles Wischen löst nie aus; Anzeige am ↻-Knopf (hell → voll gefärbt → dreht beim Laden) |
+| Sheet nach unten ziehen | alle Sheets | schließen | ab ca. 25 % der Sheet-Höhe bzw. 140 px |
+| Zurück-Taste / Zurück-Geste | Android, Browser | schließt Sheet bzw. Verwaltungsseite | History API (`pushState`/`popstate`); während des Speicherns bleibt das Sheet offen |
+
+- Achsensperre bei 10 px: senkrechtes Scrollen wird nie blockiert.
+- Karten-Wischen gibt es nur in der Liste (in der Woche wechselt Wischen die Woche) und nicht für Lesen.
+- **Bewegung reduzieren:** selbstlaufende Animationen aus, Gesten bleiben.
+- iPhone-App vom Startbildschirm hat keine System-Zurück-Geste → dort Sheet nach unten ziehen.
+
+---
+
+## 11. Darstellung: Hell, Dunkel, Systemeinstellung
+- In „Weitere Aktionen“ → Darstellung; gespeichert in `localStorage` `dienstplan.theme` = `light` · `dark` · (fehlt = `system`). Gilt nur auf diesem Gerät.
+- `data-theme="light|dark"` am `<html>`; bei System entscheidet `prefers-color-scheme` (mit Listener). `theme-color` wird passend gesetzt.
+- Ein kleines Inline-Script im `<head>` setzt das Theme **vor dem ersten Rendern** (kein Aufblitzen).
+- Dunkelmodus: **Nachtblau mit Signalgelb**. Die Anmeldung bleibt immer rot.
+
+---
+
+## 12. Design-Tokens
+
+Schrift: Systemschrift (`Inter` wird genutzt, falls installiert; nicht mitgeliefert). Maße und Radien siehe Kapitel 13.
 
 | Token | Hell | Dunkel | Verwendung |
 |---|---|---|---|
-| `--bg` | `#f3f3f1` | `#111111` | Seitenhintergrund |
-| `--surface` | `#ffffff` | `#1c1c1c` | Karten, Sheets |
-| `--surface-2` | `#f6f6f4` | `#252525` | Felder, Standard-Buttons |
-| `--text` | `#1b1b1b` | `#ededed` | Haupttext |
-| `--muted` | `#686868` | `#a3a3a3` | Nebentext |
-| `--line` | `#e2e2de` | `#313131` | Rahmen, Trenner |
-| `--accent` | `#c62828` | `#ef5350` | Feuerwehrrot: Primär, aktive Termine |
-| `--accent-ink` | `#ffffff` | `#ffffff` | Text auf Akzent |
-| `--accent-soft` | `#fdecec` | `#3a1c1c` | Datumskachel aktiv |
-| `--warn` | `#a74a00` | `#ffb35c` | Verschoben (Text) |
-| `--warn-bg` | `#fff1df` | `#3a2914` | Verschoben (Fläche) |
-| `--off` | `#7a7a7a` | `#9a9a9a` | Abgesagt (Text) |
-| `--off-bg` | `#ececea` | `#2a2a2a` | Abgesagt (Fläche) |
-| `--danger` | `#b3261e` | `#f2675f` | Löschen |
-| Toast | `#232323` | `#232323` | Erfolgsmeldung |
-| Toast Fehler | `#8e1c16` | `#8e1c16` | Fehlermeldung |
+| `--bg` | `#f4f3f0` | `#0b1530` | Seitenhintergrund |
+| `--surface` | `#ffffff` | `#141f40` | Karten, Sheets |
+| `--surface-2` | `#f6f6f4` | `#1a2650` | Felder, Standard-Buttons |
+| `--chip` / `--chip-ink` | `#f1f0ec` / `#3d3d3d` | `#1d2a55` / `#d4dae9` | Badges, Info-Kästen |
+| `--segment` | `#e9e8e3` | `#18234a` | Segment-Umschalter |
+| `--text` | `#1b1b1b` | `#eef1f8` | Haupttext |
+| `--text-2` | `#4a4a4a` | `#c3cbe0` | Abschnittsüberschriften, Labels |
+| `--muted` | `#5f5f5f` | `#a7b2cf` | Nebentext |
+| `--line` / `--line-strong` | `#e4e2dd` / `#d6d4ce` | `#263463` / `#33447a` | Rahmen |
+| `--accent` | `#c62828` | `#e8ff2b` | Feuerwehrrot / Signalgelb |
+| `--accent-ink` | `#ffffff` | `#0b1530` | Text auf Akzent |
+| `--accent-soft` / `-line` | `#fdecec` / `#f3c9c9` | `#2c3414` / `#5a661d` | Datumskachel, Heute-Knopf |
+| `--accent-text` | `#b71c1c` | `#e8ff2b` | Akzent als Text |
+| `--today-line` | `#ef9a9a` | `#e8ff2b` | Rahmen der heutigen Karte |
+| `--focus` | `#c62828` | `#e8ff2b` | Fokusrahmen |
+| `--warn` / `--warn-bg` / `--warn-line` | `#9a4300` / `#fff1df` / `#f5cf9f` | `#ffaa5c` / `#3a2a14` / `#6e4a1e` | Verschoben |
+| `--warn-solid` / `-ink` | `#a74a00` / `#ffffff` | `#ff9a3c` / `#0b1530` | Verschieben-Button, Wisch-Hintergrund |
+| `--off` / `--off-bg` / `--off-title` | `#616161` / `#ececea` / `#6b6b6b` | `#9aa5c4` / `#1b2547` / `#8d98b8` | Abgesagt |
+| `--danger` | `#b3261e` | `#ff7b72` | Löschen |
+| `--ok` / `--ok-bg` / `--ok-ink` | `#2e7d32` / `#e8f5e9` / `#1b5e20` | `#5fd38a` / `#123a26` / `#8fe3a8` | „Im Kalender“, „Aktiv“ |
+| `--toast` | `#232323` | `#233166` | Toast |
+| `--offline-bg` / `-ink` | `#fff6d6` / `#5c4a00` | `#2f2c0e` / `#f2e58a` | Offline-Streifen |
+| `--role-admin-bg` / `-ink` | `#1b1b1b` / `#ffffff` | `#e8ff2b` / `#0b1530` | Badge Admin |
+| `--role-write-bg` / `-ink` | `#e3f2fd` / `#0d47a1` | `#16305e` / `#9cc4ff` | Badge Schreiben |
+| `--swipe-cancel` | `#5a5a5a` | `#3b4a7a` | Wisch-Hintergrund Absagen |
+| `--undo-ink` | `#ffcdd2` | `#e8ff2b` | „Rückgängig“ im Toast |
 
-Hell/Dunkel folgt automatisch der Systemeinstellung (`prefers-color-scheme`); es gibt keinen manuellen Umschalter.
+Alle Text-/Hintergrund-Paare erreichen mindestens **4,5:1**.
 
-### 8.2 Typografie
-Systemschrift (`-apple-system, Segoe UI, Roboto, …`), keine Webfonts.
+**Datumskachel nach Status:** Aktiv = `--accent-soft` + `--accent-text`; Heute = volle Akzentfläche + Akzentrahmen; Verschoben = `--warn-bg` + `--warn`; Abgesagt = `--off-bg` + `--off`, Titel durchgestrichen.
 
-| Rolle | Größe | Gewicht |
-|---|---|---|
-| App-Titel | 22 px | 700 |
-| Sheet-Titel | 20 px | 700 |
-| Tageszahl (Kachel) | 22 px | 700 |
-| Fließtext, Kartentitel, Felder | 16 px | 400 / 600 |
-| Metazeile, Info, Segment | 14 px | 400 |
-| Labels, Monatsüberschrift | 13 px | 600–700 |
-| Badges, Kleingedrucktes | 12 px | 600 / 400 |
-| Wochentag/Monat (Kachel) | 11 px | 700 / 400 |
-| Zugangscode-Feld | 18 px Monospace | 600 |
+**Icons:** Inline-SVG (`icons.js`), 24er-Raster, 2 px Strich, `currentColor`, `aria-hidden` an dekorativen Icons, `aria-label` an Icon-Buttons. Vorhanden: Kalender, Kalender-Haken, Haken, Neu laden, Mehr, Suche, Chevrons, Serie, Pfeil rechts, Kreuz, Plus, Ort, Notiz, Verbot, Stift, Sonne, Mond, Handy, Info, Schlüssel, Kategorien, Teilen, Auge, WLAN-aus, Abmelden.
 
-### 8.3 Maße
-| Element | Wert |
+---
+
+## 13. Komponenten
+
+| Komponente | Maße / Verhalten |
 |---|---|
-| Seitenrand | 16 px |
-| Maximalbreite Inhalt | 680 px (Sheets 640 px) |
-| Kartenabstand | 8 px |
-| Karten-Innenabstand | 12 px |
-| Radien | Karten 14 · Buttons 12 · Felder 10 · Kachel 10 · Sheet 20 · FAB 18 · Badge rund |
-| Schatten (hell) | `0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.05)`; im Dunkelmodus keiner |
-| Safe Areas | `env(safe-area-inset-*)` oben (Kopfzeile) und unten (FAB, Sheet, Liste) |
+| Terminkarte | Kachel 52 px (Wochentag 11 px, Tag 22 px, Monat 11 px), Titel 16 px/600, Meta 14 px, Badges 24 px hoch; Radius 14 px |
+| Wochenkarte | kompakt: Meta 12 px/700, Titel 15 px/600, Radius 12 px |
+| Tagesstreifen | 7 Spalten, Knöpfe 62 px hoch, Punkte 6 px |
+| Bottom Sheet | max. 92 % Höhe, Radius 20 px oben, Griff, Fokus wandert hinein und zurück, Fokusfalle, Escape/Zurück/nach unten ziehen schließt |
+| Seite (Verwaltung) | eigene Kopfzeile mit Zurück-Knopf, Untertitel „Nur für Admins“ |
+| Buttons | primär (Akzent), Warnung (Verschieben), Standard, Text/Gefahr, Kacheln 72 px, Icon 44×44, FAB 56 px; alle ≥ 44 px |
+| Formularfelder | 46 px, Radius 10 px, 16 px Schrift, Fokus mit 2-px-Rahmen in Akzentfarbe |
+| Schalter | 46×28 px, Rolle `switch` |
+| Chips | Kategorie: 40 px, Radius 10, Farbpunkt; Vorlage: Pille, Auswahl in Akzent |
+| Toast | unten, 3 s (Erfolg) bzw. 6 s (Fehler, Rückgängig), optional mit Aktionsknopf |
 
-### 8.4 Bewegung
-Sheet 250 ms `cubic-bezier(.2,.8,.2,1)`, Hintergrund und Toast 200 ms, Karten-Tap `scale(.99)`. Bei „Bewegung reduzieren“ werden die Übergänge abgeschaltet.
-
-### 8.5 Icons
-Aktuell **Emojis und Unicode-Zeichen** (🚒 📅 📍 📝 🔁 ❌ ↪️ ⋯ ↻ ＋), keine Icon-Bibliothek. App-Icon: weißer Kreis mit Feuerwehrauto-Emoji auf rotem Grund (192/512/180 px, PNG).
-
----
-
-## 9. Zustände: Laden, Leer, Fehler, Offline
-
-| Zustand | Wann | Darstellung heute |
-|---|---|---|
-| Erstes Laden | keine gespeicherte Liste | Kreisel + „Lade Termine…“ mittig |
-| Hintergrund-Laden | gespeicherte Liste vorhanden | Liste sofort sichtbar, kein Indikator |
-| Leer | keine Termine im Filter | „Keine kommenden Termine.“ / „Keine vergangenen Termine.“ / „Keine Treffer.“ |
-| Fehler ohne Daten | Server nicht erreichbar, nichts gespeichert | „⚠️ Keine Verbindung zum Server. Bist du online?“ + [Nochmal versuchen] |
-| Veraltet / offline | Laden fehlgeschlagen, alte Liste vorhanden | gelber Streifen „Offline – du siehst den Stand vom 06.11., 18:12.“ |
-| Speichern | nach Tap auf eine Aktion | Kreisel im Button, Sheet gesperrt (2–6 s) |
-| Speichern fehlgeschlagen | Fehler vom Server | Sheet bleibt offen, roter Toast mit Grund |
-| Kalender-Warnung | Sheet ok, Kalender nicht | Sheet schließt, roter Toast mit Erklärung |
-| Abgemeldet | Code ungültig/gesperrt | zurück zur Anmeldung mit Meldung |
-| Noch nicht im Kalender | Termin ohne `eventId` | Badge „Noch nicht im Kalender“ |
+Seitenrand 16 px, Inhalt max. 680 px breit (Sheets 640 px).
 
 ---
 
-## 10. Texte & Tonalität
+## 14. Zustände: Laden, Leer, Fehler, Offline
 
-- **Du-Form**, freundlich, knapp, ohne Technikbegriffe („Kalender“ statt „Sync-Ziel“, „Zugangscode“ statt „Token“).
-- Datumsformat **TT.MM.JJJJ**, Uhrzeit **HH:MM Uhr**, Wochentage und Monate deutsch.
-- Bestätigungen erklären die **Folge** der Aktion in einem Satz.
-- Fehlermeldungen sagen, **was zu tun ist** („Bitte ein neues Datum wählen.“).
-
-Status-Begriffe (verbindlich, müssen zu Sheet und Kalender passen): **Aktiv · Abgesagt · Verschoben · Löschen/Gelöscht**.
+| Zustand | Darstellung |
+|---|---|
+| Erstes Laden | Kreisel + „Lade Termine…“ |
+| Hintergrund-Laden | gespeicherte Liste sofort sichtbar, ↻ dreht sich |
+| Leer | „Keine kommenden Termine.“ / „Keine Treffer.“ / Woche: „Kein Termin“ je Tag |
+| Fehler ohne Daten | Hinweis + [Nochmal versuchen] |
+| Offline / veraltet | gelber Streifen „Offline – du siehst den Stand von 08:31. Änderungen gehen erst wieder mit Verbindung.“, Kopf „Offline · Stand …“ |
+| Speichern | Kreisel im Button bzw. auf der Karte, Sheet gesperrt, Kopf „Wird gespeichert…“ |
+| Speichern fehlgeschlagen | Sheet bleibt offen, roter Toast |
+| Kalender-Warnung | „Im Sheet gespeichert, aber der Kalender konnte nicht aktualisiert werden …“ |
+| Keine Rechte | Toast „Dafür fehlen dir die Rechte.“, Anzeige wird angepasst |
+| Abgemeldet | Code ungültig/gesperrt → Anmeldung mit Meldung |
+| Noch nicht im Kalender | Badge an der Karte |
 
 ---
 
-## 11. Schnittstelle (API)
+## 15. Texte & Tonalität
+Du-Form, freundlich, knapp, keine Technikbegriffe („Zugangscode“ statt „Token“). Datum TT.MM.JJJJ, Uhrzeit HH:MM Uhr. Bestätigungen erklären die Folge in einem Satz; Fehlermeldungen sagen, was zu tun ist. Status-Begriffe (verbindlich, auch im Sheet und Kalender): **Aktiv · Abgesagt · Verschoben · Löschen/Gelöscht**.
 
-**Endpunkt:** Apps-Script-Web-App, Link in `config.js` (`API_URL`, endet auf `/exec`).
+---
+
+## 16. Schnittstelle (API)
+
+**Endpunkt:** Apps-Script-Web-App, Link in `config.js` (`API_URL`, endet auf `/exec`). `GET` liefert `{ ok, info, version }` – damit lässt sich prüfen, welche Version bereitgestellt ist.
 
 **Anfrage**
 ```http
@@ -453,155 +461,134 @@ Content-Type: text/plain;charset=utf-8
 
 { "action": "<aktion>", "code": "<ZUGANGSCODE>", "data": { … } }
 ```
-`text/plain` ist Absicht: Apps Script beantwortet keine CORS-Vorabfragen.
+`text/plain` vermeidet die CORS-Vorabfrage, die Apps Script nicht beantwortet.
 
-**Aktionen**
+**Jede Antwort** enthält `ok`, bei erfolgreicher Anmeldung zusätzlich `role` (`admin`·`write`·`read`), `userName` und `user` (= Name).
 
-| `action` | `data` | Wirkung |
-|---|---|---|
-| `getData` | – | liefert alle Termine |
-| `saveEvent` | `{ ref?, subject, date, endDate, allDay, start, end, location, description, category }` | ohne `ref`: neuer Termin; mit `ref`: bearbeiten |
-| `setStatus` | `{ ref, status, newDate?, newTime? }` | `status` = `ABGESAGT` · `VERSCHOBEN` (+ `newDate`, optional `newTime`) · `AKTIV` · `LÖSCHEN` |
-| `syncAll` | – | kompletter Abgleich Sheet → Kalender |
+| `action` | Rolle | `data` | Antwort / Wirkung |
+|---|---|---|---|
+| `getData` | Lesen | – | `events`, `categoryList: [{ name, colorId, count }]` (`count` = Termine mit Status ≠ GELÖSCHT), `today`; für Admins `codeCount` |
+| `saveEvent` | Schreiben | `{ ref?, subject, date, endDate, allDay, start, end, location, description, category }` | ohne `ref` neu, mit `ref` bearbeiten; wie `getData` + `message` |
+| `setStatus` | Schreiben, **LÖSCHEN nur Admin** | `{ ref, status, newDate?, newTime? }` | `ABGESAGT` · `VERSCHOBEN` (+`newDate`, optional `newTime`) · `AKTIV` · `LÖSCHEN` |
+| `syncAll` | Admin | – | kompletter Abgleich Sheet → Kalender |
+| `saveCategory` | Admin | `{ oldName?, name, colorId }` | anlegen bzw. ändern/umbenennen (Kapitel 8.4); wie `getData` + `message` |
+| `deleteCategory` | Admin | `{ name }` | löschen, wenn `count = 0` |
+| `listCodes` | Admin | – | `codes: [{ id, name, role, team, hint, blocked, created, lastUsed, self }]`, `codeCount` |
+| `createCode` | Admin | `{ name, role }` | `code`, `link` (nur in dieser Antwort) + Liste |
+| `updateCode` | Admin | `{ id, name?, role?, blocked? }` | ändern, sperren, entsperren (Schutzregeln Kapitel 5.2) |
+| `deleteCode` | Admin | `{ id }` | Code endgültig entfernen (nicht der eigene, nicht der letzte Admin) |
+| `rotateTeamCode` | Admin | – | neuer Mannschafts-Code, alter sofort ungültig → `code`, `link`; legt einen an, falls keiner existiert |
 
-`ref` = `{ row, eventId, subject }`. Damit findet der Server die Zeile auch dann wieder, wenn das Sheet inzwischen sortiert wurde.
-
-**Antwort**
-```json
-{ "ok": true, "message": "Termin abgesagt.", "warning": false,
-  "events": [ … ], "categories": [ … ], "today": "2026-11-06", "user": "Lars" }
-```
-Jede Änderung liefert die **komplette, aktuelle Terminliste** zurück, die App ersetzt ihre Liste damit.
+`ref` = `{ row, eventId, subject }` – damit findet der Server die Zeile auch nach dem Sortieren wieder. Änderungen an Terminen liefern die komplette aktuelle Liste zurück.
 
 **Fehler**
-```json
-{ "ok": false, "error": "Zugangscode ungültig oder gesperrt.", "auth": true }
-```
-`auth: true` → App meldet ab und zeigt die Anmeldung.
+
+| Fall | Antwort | App-Verhalten |
+|---|---|---|
+| Code ungültig/gesperrt | `{ ok:false, error, auth:true }` | abmelden, Anmeldung zeigen |
+| Rolle reicht nicht | `{ ok:false, error:"Dafür fehlen dir die Rechte.", forbidden:true }` | Toast, kein Abmelden |
+| Validierung | `{ ok:false, error:"Diese Kategorie gibt es schon." }` | Toast, Sheet bleibt offen |
 
 ---
 
-## 12. PWA-Technik
+## 17. Sheet-Menü und Script-Funktionen
+
+**Sheet-Menü „🚒 Feuerwehr Kalender-Sync“:** Jetzt synchronisieren · Kalender-Termine in Liste übernehmen… · Sheet einrichten (Spalten, Dropdown, Farben) · 🏷️ Kategorien einrichten · 🏷️ Kategorien vorschlagen und eintragen… · Kalender-IDs anzeigen · ⏱ Automatischen Sync ein/aus (alle 15 Min.) · 🔑 Zugangscode erstellen… (mit Rolle) · 🔑 Zugangscodes verwalten… (Übersicht, Rolle, sperren, entsperren, gesperrte löschen) · 📱 Link der App-Schnittstelle anzeigen · 🧹 Cleanup (Nicht-Sheet-Termine ab/vor Datum) · 🔥 Hard Delete.
+
+**Einmalige Editor-Funktionen:** `migrateCodesV2()` (alte Klartext-Codes → Hash-Modell, Rolle „write“; erledigt) · `setAdmin(name)` (Code zum Admin machen).
+
+---
+
+## 18. PWA-Technik
 
 | Thema | Umsetzung |
 |---|---|
-| Manifest | `manifest.webmanifest`: Name „Dienstplan Feuerwehr“, Kurzname „Dienstplan“, `display: standalone`, Theme `#c62828`, Icons 192/512 (auch maskable) |
-| iOS | `apple-touch-icon.png` (180 px), `apple-mobile-web-app-capable`, Statusleiste `default` |
-| Theme-Farbe | hell `#f3f3f1`, dunkel `#111111` (Meta-Tags je Farbschema) |
-| Service Worker | `sw.js`: speichert die App-Dateien; Strategie **erst Netz, dann Speicher**; API-Anfragen werden nicht zwischengespeichert |
-| Lokaler Speicher | `dienstplan.code` (Zugangscode), `dienstplan.data` (letzte Liste + Zeitpunkt) |
-| Aktualisierung | Versionsnummer in `sw.js` erhöhen (`dienstplan-v2` → `v3`), sonst laden Handys alte Dateien |
-| Offline | App öffnet und zeigt den letzten Stand; Änderungen sind offline **nicht** möglich (keine Warteschlange) |
-| Push-Mitteilungen | nicht vorhanden |
+| Manifest | `manifest.webmanifest`: „Dienstplan Feuerwehr“ / „Dienstplan“, `standalone`, Theme `#c62828`, Icons 192/512 (auch maskable) |
+| iOS | `apple-touch-icon.png` (180 px), `apple-mobile-web-app-capable` |
+| Service Worker | `sw.js`, Cache `dienstplan-v4`; erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
+| Lokaler Speicher | `dienstplan.code` (Zugangscode), `dienstplan.data` (letzte Liste), `dienstplan.theme`, `dienstplan.view` (`list`/`week`), `dienstplan.swipeHintSeen` |
+| Aktualisierung | nach Änderungen an App-Dateien die Cache-Version in `sw.js` erhöhen |
+| Offline | App öffnet mit letztem Stand; Änderungen offline nicht möglich |
+| Aufräumen Beta | `beta/sw.js` meldet sich selbst ab und löscht den Beta-Cache; `beta/index.html` leitet (mit `#code=…`) zur App weiter; die App entfernt beim Start Beta-Registrierungen und -Daten. Beide Dateien können nach einigen Wochen gelöscht werden. |
 
 ---
 
-## 13. Sicherheit & Zugang
-
-- Die Schnittstelle ist öffentlich erreichbar („Zugriff: Jeder“), beantwortet aber **nur Anfragen mit gültigem Zugangscode**.
-- Codes: 20 Zeichen aus 31 eindeutig lesbaren Zeichen (ohne 0/O, 1/I/L), angezeigt als `XXXX-XXXX-XXXX-XXXX-XXXX`.
-- Verwaltung im **Sheet-Menü**: „🔑 Zugangscode erstellen…“ (mit Anmelde-Link) und „🔑 Zugangscodes anzeigen / sperren…“. Gespeichert in den Script-Eigenschaften.
-- Falsche Codes werden serverseitig um ~0,8 s ausgebremst.
-- Im Repository und in der App-Oberfläche stehen **keine** Termine, Codes oder Passwörter.
-- Jede Änderung über die App wird im Sheet mit Zeit und Namen vermerkt (Spalte „Letzte Änderung“).
-- **Keine Rollen:** Jeder gültige Code darf alles (auch löschen).
+## 19. Sicherheit
+- Schnittstelle öffentlich erreichbar („Zugriff: Jeder“), beantwortet aber nur Anfragen mit gültigem Code; Rolle wird bei jeder Anfrage geprüft.
+- Codes nur als SHA-256-Hash in den Script-Eigenschaften; vollständiger Code nur einmal sichtbar.
+- Im Repository stehen keine Termine, Codes oder Passwörter. Öffentlich sichtbar sind der Schnittstellen-Link (`config.js`) und die Kalender-ID im Script – beide ohne Code bzw. Kalenderfreigabe wertlos.
+- Jede Änderung über die App wird im Sheet mit Zeit und Namen vermerkt („Letzte Änderung“).
 
 ---
 
-## 14. Barrierefreiheit
-
-**Vorhanden**
-- Echte `<button>`-Elemente, Icon-Buttons mit `aria-label`.
-- Segment-Umschalter mit `aria-pressed`, Sheet mit `role="dialog"`, Toast mit `aria-live`.
-- Mindestgrößen für Tippziele (42–56 px), 16 px Grundschrift.
-- Status nie nur über Farbe: zusätzlich Text-Badge bzw. Durchstreichung.
-- Dunkelmodus und reduzierte Bewegung werden berücksichtigt.
-
-**Lücken (für das neue Design)**
-- Fokus wird beim Öffnen/Schließen von Sheets nicht gesteuert und nicht im Sheet gehalten.
-- Kein sichtbarer Fokusrahmen definiert (Browser-Standard).
-- Emojis als Icons werden von Screenreadern vorgelesen.
-- Kontraste von `--muted` auf `--surface-2` und von Badges sind nicht systematisch geprüft.
+## 20. Barrierefreiheit
+- Echte Buttons, `aria-label` an Icon-Buttons und Karten (Titel, Datum, Zeit, Status), `aria-pressed` an Umschaltern und Chips, `role="dialog"` + `aria-modal` an Sheets, `aria-live` für Toast und Sync-Stand.
+- Fokus wandert ins Sheet (Titel bzw. erstes Feld) und beim Schließen zurück zur auslösenden Karte; Fokusfalle im Sheet; Hintergrund `inert`.
+- Sichtbarer Fokusrahmen (3 px) in Akzentfarbe.
+- Kontraste ≥ 4,5:1 in Hell und Dunkel; Status nie nur über Farbe.
+- Tippziele ≥ 44 px; 16 px Grundschrift (kein Zoom auf iOS).
+- „Bewegung reduzieren“ wird berücksichtigt.
+- Wischgesten haben immer einen Weg ohne Geste (Details, Pfeile, ↻).
 
 ---
 
-## 15. Technische Rahmenbedingungen für das Design
+## 21. Technische Rahmenbedingungen
 
-| Rahmenbedingung | Folge fürs Design |
+| Rahmenbedingung | Folge |
 |---|---|
-| **Jede Server-Anfrage dauert 2–6 s** (Apps Script) | Ladezustände sind Pflicht; optimistische Anzeige wäre möglich, aber Rückmeldung abwarten |
-| Kompletter Sync 10–60 s | Langläufer-Hinweis nötig |
-| Server liefert immer die **ganze Liste** | einfache Datenhaltung; keine Teil-Updates nötig |
-| Statisches Hosting (GitHub Pages), **kein Build-Schritt** | Vanilla HTML/CSS/JS; Frameworks nur ohne Build (oder Build-Schritt einführen) |
-| Keine externen Abhängigkeiten aktuell | Webfonts/Icon-Sets müssten mitgeliefert werden (Offline-Fähigkeit) |
-| Native Datums-/Zeitfelder | Aussehen je nach System unterschiedlich; eigene Picker = deutlich mehr Aufwand |
-| Keine Push-Mitteilungen, kein Hintergrund-Sync | „Neu“-Hinweise nur beim Öffnen möglich |
-| Keine Rollen/Rechte im Backend | Rollen-Design bräuchte Backend-Erweiterung |
-| Einzeltermine von Serien nicht bearbeitbar | Design darf das nicht versprechen |
-| Status-Begriffe und Präfixe sind im Kalender sichtbar | Änderungen an Begriffen betreffen auch Sheet und Kalender |
+| Jede Anfrage 2–6 s (Apps Script) | Ladezustände Pflicht |
+| Kompletter Sync 10–60 s, Limit 6 Min. | Hinweise; großer Sync ggf. erneut starten |
+| Server liefert immer die ganze Liste | einfache Datenhaltung |
+| Statisches Hosting ohne Build | Vanilla HTML/CSS/JS; keine externen Abhängigkeiten |
+| Keine Push-Mitteilungen | Neues nur beim Öffnen/Aktualisieren |
+| Einzeltermine von Serien nicht bearbeitbar | Hinweis „gilt für die ganze Serie“ |
+| Status-Präfixe im Kalender sichtbar | Begriffe nur gemeinsam mit Sheet/Kalender ändern |
 
 ---
 
-## 16. Bekannte Schwächen der Version 1
-
-1. **Kein Zurück per Wischgeste/Zurück-Taste:** Sheets schließen sich nicht über die Android-Zurück-Taste oder den Browserverlauf.
-2. **Keine Wochen-/Kalenderansicht**, nur Liste.
-3. **„Heute“ ist nicht hervorgehoben**, kein Sprung zu heute.
-4. **Kategorien ohne Farbe** in der App (nur im Kalender farbig).
-5. **Verknüpfung alt ↔ neu bei Verschiebungen** nicht navigierbar (man kann nicht vom alten zum neuen Termin springen).
-6. **Kein Rückgängig** nach Absagen/Löschen (nur über „Wieder aktivieren“; Löschen ist endgültig).
-7. **Kein Pull-to-Refresh**, nur der ↻-Button.
-8. **Emoji-Icons** wirken je nach System unterschiedlich.
-9. **Keine Offline-Änderungen.**
-10. **Desktop-Ansicht** ist nur eine schmale, zentrierte Handy-Ansicht.
+## 22. Bereitstellung & Betrieb
+- **App:** Änderungen ins Repository `lars-menke/dienstplan` (Branch `main`); GitHub Pages veröffentlicht nach 1–2 Minuten. Cache-Version in `sw.js` erhöhen.
+- **Schnittstelle:** `apps-script/*.gs` ins Apps-Script-Projekt kopieren, speichern, dann **Bereitstellungen verwalten → bestehende Bereitstellung → Stift → Version „Neue Version“ → Bereitstellen** (sonst ändert sich die `/exec`-URL bzw. die alte Version bleibt aktiv). Kontrolle: `GET` auf die `/exec`-Adresse zeigt `version`.
+- **Reihenfolge bei inkompatiblen Änderungen:** erst die App veröffentlichen, dann die Schnittstelle bereitstellen.
 
 ---
 
-## 17. Ideen & offene Fragen für das neue Design
-
-**Ideen (nach Nutzen sortiert)**
-- Wischgesten auf Karten (z. B. links = Absagen, rechts = Verschieben) mit Rückgängig-Toast.
-- „Heute“/„Diese Woche“-Bereich oben, Sprung-zu-heute.
-- Kategoriefarben in der App, passend zu den Google-Kalender-Farben (ColorId 1–11).
-- Kompakte Wochen- oder Monatsansicht als zweite Darstellung.
-- Schnell-Verschieben: „+1 Woche“, „+2 Wochen“, „anderer Tag“.
-- Verlinkung zwischen altem und neuem Termin bei Verschiebungen.
-- Vorlagen für wiederkehrende Terminarten (Übungsdienst, Dienstbesprechung … mit Standard-Ort/-Zeit).
-- Eigenes Icon-Set (SVG, inline) statt Emojis.
-- Zurück-Taste/Wischgeste schließt Sheets.
-- Pull-to-Refresh.
-
-**Offene Fragen**
-1. Bleibt die Liste die Hauptansicht, oder wird ein Kalender-/Wochenraster ergänzt?
-2. Sollen **Rollen** kommen (z. B. „nur lesen“ für weitere Führungskräfte)? → Backend-Änderung.
-3. Soll die **Mannschaft** die App künftig auch nutzen (nur lesend)? → andere Zielgruppe, andere Prioritäten.
-4. Eigene Markenelemente (Wappen, Ortsname „Wildeshausen“) oder neutral?
-5. Feste Farbwelt Feuerwehrrot beibehalten, oder Status-Farben stärker in den Vordergrund?
-6. Ist ein Build-Schritt (z. B. für ein Framework oder Icon-Bundling) akzeptabel, oder bleibt es bei „Dateien hochladen, fertig“?
+## 23. Bekannte Grenzen & offene Punkte
+1. **Vorlagen** stehen fest in `config.js`; Pflege im Sheet bzw. in der App wäre möglich.
+2. **Schrift:** Inter mitliefern oder Systemschrift beibehalten.
+3. **Akzentfarbe:** Feuerwehrrot (Hell) / Signalgelb (Dunkel) – bewusst so entschieden.
+4. **Mannschafts-Code verteilen:** Weg festlegen (z. B. WhatsApp-Community).
+5. Rund 50 Termine sind noch keiner Kategorie zugeordnet (manuell oder per Vorschlags-Funktion nach Ergänzen der Stichwörter).
+6. Vorlage „Gruppendienst“ verweist auf die nicht vorhandene Kategorie „Ausbildung“.
+7. Keine Offline-Änderungen, keine Push-Mitteilungen.
 
 ---
 
-## 18. Dateien & Zuständigkeiten
-
-**Repository `lars-menke/dienstplan` (GitHub Pages)**
+## 24. Dateien
 
 | Datei | Inhalt |
 |---|---|
-| `index.html` | Grundgerüst: Anmeldung, Kopfzeile, Liste, FAB, Sheet, Toast |
-| `app.css` | gesamtes Styling inkl. Design-Tokens und Dunkelmodus |
-| `app.js` | Logik: Anmeldung, API, Liste, Sheets, Formulare, Zustände |
-| `config.js` | `API_URL` der Apps-Script-Schnittstelle |
-| `manifest.webmanifest` | PWA-Name, Farben, Icons |
-| `sw.js` | Service Worker (Cache-Version!) |
-| `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `favicon.png` | Icons |
+| `index.html` | Grundgerüst, Theme-Script im `<head>` |
+| `app.css` | Styling, Design-Tokens Hell/Dunkel |
+| `app.js` | gesamte Logik (Anmeldung, API, Liste, Woche, Sheets, Gesten, Verwaltung) |
+| `icons.js` | Inline-SVG-Icons |
+| `config.js` | `API_URL`, `TEMPLATES` |
+| `manifest.webmanifest`, `*.png` | Name und Icons |
+| `sw.js` | Service Worker |
+| `beta/` | nur noch Weiterleitung + Aufräum-Service-Worker der früheren Testversion |
+| `apps-script/Dienstplan-Sync.gs` | Sync, Status-Logik, Kategorien, Sheet-Menü |
+| `apps-script/WebApp.gs` | Schnittstelle, Rollen, Zugangscodes |
 | `docs/PWA-Spezifikation.md` | dieses Dokument |
+| `docs/design/` | Design-Artboards (Referenz) |
 
-**Apps-Script-Projekt (am Google Sheet)**
+---
 
-| Datei | Inhalt |
+## 25. Historie
+
+| Datum | Stand |
 |---|---|
-| `Dienstplan-Sync.gs` | Sheet → Kalender-Sync, Status-Logik, Folgetermine, Import, Löschfunktionen, Sheet-Menü |
-| `WebApp.gs` | Schnittstelle für die App (`doPost`), Zugangscodes |
-
-**Google Sheet `DataSheet`, relevante Spalten:**
-`Subject`, `Start Date`, `Start Time`, `End Date`, `End Time`, `All Day Event`, `Description`, `Location`, `Category` (optional), `Recurrence` (optional), `Status`, `Verschoben auf`, `Folgetermin-ID`, `EventId`, `LastSyncHash`, `Letzte Änderung`.
+| 05.11.2026 | Version 1: PWA auf GitHub Pages, Apps-Script-Schnittstelle, persönliche Codes, alle Rechte gleich |
+| 06.11.2026 | Spezifikation V2 als Ergänzung; Etappe 1: Rollen, Hash-Codes, `categoryList`, Kategorie im Kalender; Code-Übersicht im Sheet; Kategorien Übung/Besprechung/Tradition |
+| 07.11.2026 | Etappen 2–4 als Testversion unter `beta/`: neues Design, Hell/Dunkel, Verwaltung in der App, Wochenansicht, Vorlagen |
+| 08.11.2026 | Etappe 5: Wischgesten, Zurück-Taste, Ziehen zum Aktualisieren; Codes in der App löschen |
+| 08.11.2026 | Etappe 6: neue Oberfläche freigegeben, `beta/` abgebaut, Feld `categories` entfernt (Schnittstelle 4.0), Spezifikationen zusammengeführt |

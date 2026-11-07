@@ -21,11 +21,10 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '3.1 (Zugangscodes in der App löschen)',
+  VERSION: '4.0 (neue Oberfläche freigegeben)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
-  BETA_URL: 'https://lars-menke.github.io/dienstplan/beta/',
 
   COL_GEAENDERT: 'Letzte Änderung',
 
@@ -325,12 +324,12 @@ function createCode_(name, role, team) {
       lastUsed: null,
     };
     store.push(entry);
-    return { entry, code, link: codeLink_(code), betaLink: codeLink_(code, true) };
+    return { entry, code, link: codeLink_(code) };
   });
 }
 
-function codeLink_(code, beta) {
-  return `${beta ? WEBAPP.BETA_URL : WEBAPP.APP_URL}#code=${code}`;
+function codeLink_(code) {
+  return `${WEBAPP.APP_URL}#code=${code}`;
 }
 
 function activeAdmins_(store) {
@@ -478,8 +477,6 @@ function createAccessCode() {
         <p><b>Am einfachsten:</b> diesen Link aufs Handy schicken. Wer ihn öffnet, ist direkt angemeldet:</p>
         <input id="rLink" readonly style="width:100%;padding:8px;font-size:13px;box-sizing:border-box" onclick="this.select()">
         <p><button id="copy">Link kopieren</button></p>
-        <p style="margin-bottom:4px">Für die Testversion (Beta):</p>
-        <input id="rBeta" readonly style="width:100%;padding:8px;font-size:13px;box-sizing:border-box" onclick="this.select()">
         <p style="color:#a00">Der Code wird nur jetzt angezeigt. Link nur an diese eine Person geben – er funktioniert wie ein Passwort.</p>
       </div>
     </div>
@@ -492,13 +489,13 @@ function createAccessCode() {
           .withSuccessHandler(function (r) {
             $('form').style.display = 'none'; $('result').style.display = 'block';
             $('rName').textContent = r.name; $('rRole').textContent = r.roleLabel;
-            $('rCode').textContent = r.pretty; $('rLink').value = r.link; $('rBeta').value = r.betaLink;
+            $('rCode').textContent = r.pretty; $('rLink').value = r.link;
           })
           .withFailureHandler(function (e) { $('go').disabled = false; $('err').textContent = e.message; })
           .createCodeFromMenu($('name').value, role);
       };
       $('copy').onclick = function () { $('rLink').select(); document.execCommand('copy'); this.textContent = 'Kopiert ✓'; };
-    </script>`).setWidth(480).setHeight(540);
+    </script>`).setWidth(480).setHeight(470);
 
   SpreadsheetApp.getUi().showModalDialog(html, '🔑 Zugangscode erstellen');
 }
@@ -506,7 +503,7 @@ function createAccessCode() {
 /** Wird vom Dialog aufgerufen (google.script.run). */
 function createCodeFromMenu(name, role) {
   const r = createCode_(name, role, false);
-  return { name: r.entry.name, roleLabel: ROLES[r.entry.role].label, pretty: formatCode_(r.code), link: r.link, betaLink: r.betaLink };
+  return { name: r.entry.name, roleLabel: ROLES[r.entry.role].label, pretty: formatCode_(r.code), link: r.link };
 }
 
 /**
@@ -866,14 +863,13 @@ function listCodes_(user, extra) {
   return Object.assign({ codes, codeCount: codes.length }, extra || {});
 }
 
-/** { name, role } → { code, link, betaLink } nur in dieser Antwort */
+/** { name, role } → { code, link } nur in dieser Antwort */
 function createCodeApi_(data, user) {
   const r = createCode_(data.name, data.role, false);
   return listCodes_(user, {
     message: `Zugangscode für „${r.entry.name}“ erstellt.`,
     code: formatCode_(r.code),
     link: r.link,
-    betaLink: r.betaLink,
     created: { id: r.entry.id, name: r.entry.name, role: r.entry.role },
   });
 }
@@ -974,7 +970,6 @@ function rotateTeamCode_(user) {
     message: result.isNew ? 'Mannschafts-Code erzeugt.' : 'Neuer Mannschafts-Code erzeugt. Der alte funktioniert nicht mehr.',
     code: formatCode_(result.code),
     link: codeLink_(result.code),
-    betaLink: codeLink_(result.code, true),
   });
 }
 
@@ -1229,7 +1224,6 @@ function getAppData_(user) {
 
   return {
     events,
-    categories: categories.names, // Format der Live-App (Liste von Texten) – bis Etappe 6 unverändert
     categoryList: categories.list.map(c => ({
       name: c.name,
       colorId: c.colorId,

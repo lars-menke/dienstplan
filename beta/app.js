@@ -698,12 +698,20 @@ window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') cardS
 
 /* --- Pull-to-Refresh in Liste und Woche --- */
 
-// Bewusst ziehen: Der Inhalt wandert sichtbar mit (mit Widerstand). Ausgelöst wird
-// erst bei PTR_TRIGGER Pixel Zugweg – das sind rund 180 px Fingerweg.
+// Bewusst ziehen: Der Inhalt wandert sichtbar mit (mit Widerstand). Ausgelöst wird nur,
+// wenn der Zugweg erreicht ist UND dort kurz gehalten wird – schnelles Wischen
+// (normales Scrollen) löst nie aus, egal wie weit.
 const PTR_RESIST = 0.45;   // Inhalt bewegt sich mit 45 % des Fingerwegs
-const PTR_TRIGGER = 80;    // ab diesem sichtbaren Zugweg wird neu geladen
-const PTR_MAX = 120;
-const ptr = { y: 0, x: 0, pull: 0, active: false, axis: null, moved: false, loading: false };
+const PTR_TRIGGER = 90;    // sichtbarer Zugweg (≈ 210 px Fingerweg)
+const PTR_DWELL = 250;     // so lange (ms) muss der Zugweg gehalten werden
+const PTR_MAX = 130;
+const ptr = { y: 0, x: 0, pull: 0, active: false, axis: null, moved: false, loading: false, reachedAt: 0, armed: false, timer: null };
+
+function setArmed(on) {
+  ptr.armed = on;
+  reloadBtn.classList.toggle('ready', on);
+  if (on && navigator.vibrate) { try { navigator.vibrate(10); } catch (e) { /* egal */ } }
+}
 const reloadBtn = $('#btnReload');
 
 /** Steht die Seite ganz oben? Prüft Fenster und mögliche Scroll-Container. */
@@ -716,7 +724,6 @@ function atPageTop() {
 function setPtr(px, animate) {
   const icn = reloadBtn.querySelector('.ic');
   reloadBtn.classList.toggle('pulling', px > 0);
-  reloadBtn.classList.toggle('ready', px >= PTR_TRIGGER);
   if (icn) icn.style.transform = px > 0 ? `rotate(${Math.round(px * 3)}deg)` : '';
   listEl.style.transition = animate && !reducedMotion() ? 'transform .25s ease-out' : 'none';
   listEl.style.transform = px > 0 ? `translateY(${px}px)` : '';
@@ -724,7 +731,8 @@ function setPtr(px, animate) {
 
 function ptrStart(x, y) {
   if (!atPageTop() || ptr.loading || state.busy || !sheetEl.hidden || state.page) return;
-  Object.assign(ptr, { x, y, pull: 0, active: true, axis: null, moved: false });
+  clearTimeout(ptr.timer);
+  Object.assign(ptr, { x, y, pull: 0, active: true, axis: null, moved: false, reachedAt: 0, armed: false, timer: null });
 }
 
 function ptrMove(x, y) {
@@ -738,6 +746,17 @@ function ptrMove(x, y) {
   if (!atPageTop()) { ptr.active = false; setPtr(0, true); return false; }
   ptr.pull = Math.max(0, Math.min(PTR_MAX, (dy - AXIS_LOCK) * PTR_RESIST));
   setPtr(ptr.pull, false);
+  if (ptr.pull >= PTR_TRIGGER) {
+    if (!ptr.reachedAt) {
+      ptr.reachedAt = Date.now();
+      // erst nach kurzem Halten „scharf“ – dann färbt sich der Knopf voll ein
+      ptr.timer = setTimeout(() => { if (ptr.active && ptr.pull >= PTR_TRIGGER) setArmed(true); }, PTR_DWELL);
+    }
+  } else if (ptr.reachedAt) {
+    ptr.reachedAt = 0;
+    clearTimeout(ptr.timer);
+    setArmed(false);
+  }
   return true;
 }
 
@@ -747,7 +766,9 @@ async function ptrEnd() {
   if (ptr.axis !== 'down') return;
   ptr.moved = true;
   setTimeout(() => { ptr.moved = false; }, 350);
-  const go = ptr.pull >= PTR_TRIGGER;
+  clearTimeout(ptr.timer);
+  const go = ptr.armed && ptr.pull >= PTR_TRIGGER && Date.now() - ptr.reachedAt >= PTR_DWELL;
+  setArmed(false);
   setPtr(0, true);                        // Inhalt federt zurück
   if (!go) return;
   ptr.loading = true;
@@ -769,7 +790,11 @@ appEl.addEventListener('touchmove', e => {
   if (ptrMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
 }, { passive: false });
 appEl.addEventListener('touchend', ptrEnd);
-appEl.addEventListener('touchcancel', () => { ptr.active = false; if (!ptr.loading) setPtr(0, true); });
+appEl.addEventListener('touchcancel', () => {
+  ptr.active = false;
+  clearTimeout(ptr.timer);
+  if (!ptr.loading) { setArmed(false); setPtr(0, true); }
+});
 
 /* --- Sheet nach unten ziehen zum Schließen (iPhone-App ohne Zurück-Geste) --- */
 

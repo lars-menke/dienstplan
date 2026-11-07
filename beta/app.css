@@ -486,7 +486,7 @@ fieldset.group-set legend { padding: 0 0 8px; font-size: 13px; font-weight: 600;
 .day-dots i { width: 6px; height: 6px; border-radius: 50%; display: block; }
 .day-btn[aria-pressed="true"] .day-dots i { background: var(--accent-ink) !important; }
 
-.week-list { padding-top: 10px; gap: 0; }
+.week-list { padding-top: 10px; gap: 0; touch-action: pan-y; }
 .day-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 330px; }
 .day-row:last-child { border-bottom: 0; }
 .day-label { flex: none; width: 44px; display: flex; flex-direction: column; line-height: 1.15; }

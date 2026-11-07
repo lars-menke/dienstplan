@@ -1443,6 +1443,7 @@ $('#loginForm').addEventListener('submit', async e => {
 /* ---------- Start ---------- */
 
 listEl.addEventListener('click', e => {
+  if (swipe.moved) return; // war ein Wischen, kein Antippen
   const card = e.target.closest('.card, .wcard');
   if (card) openDetail(state.events[+card.dataset.i]);
 });
@@ -1461,23 +1462,87 @@ $('#dayStrip').addEventListener('click', e => {
   scrollToDay(state.selDay);
 });
 
-// Wischen im Tagesstreifen: nach links = nächste Woche, nach rechts = vorige Woche
-const swipe = { x: 0, y: 0, active: false, moved: false };
-$('#dayStrip').addEventListener('pointerdown', e => {
-  Object.assign(swipe, { x: e.clientX, y: e.clientY, active: true, moved: false });
-});
-window.addEventListener('pointerup', e => {
+// Wischen in der Wochenansicht (Tagesstreifen und Tagesliste):
+// nach links = nächste Woche, nach rechts = vorige Woche.
+// Touch-Ereignisse statt Pointer-Events, weil mobile Browser (v. a. iOS)
+// Pointer-Gesten beim Verdacht auf Scrollen abbrechen.
+const swipe = { x: 0, y: 0, dx: 0, active: false, horizontal: null, moved: false };
+const SWIPE_MIN = 60;      // Mindestweg in px für einen Wochenwechsel
+const SWIPE_LOCK = 12;     // ab hier wird entschieden: waagerecht oder senkrecht
+
+function swipeTargets() {
+  return [$('#dayStrip'), listEl];
+}
+
+function setSwipeOffset(dx, animate) {
+  swipeTargets().forEach(el => {
+    el.style.transition = animate ? 'transform .2s ease-out, opacity .2s ease-out' : 'none';
+    el.style.transform = dx ? `translateX(${dx}px)` : '';
+    el.style.opacity = dx ? String(Math.max(0.4, 1 - Math.abs(dx) / 400)) : '';
+  });
+}
+
+function swipeStart(x, y) {
+  if (state.view !== 'week' || !sheetEl.hidden) return;
+  Object.assign(swipe, { x, y, dx: 0, active: true, horizontal: null, moved: false });
+}
+
+/** Gibt true zurück, wenn die Bewegung als waagerechtes Wischen erkannt ist (dann kein Scrollen). */
+function swipeMove(x, y) {
+  if (!swipe.active) return false;
+  const dx = x - swipe.x;
+  const dy = y - swipe.y;
+  if (swipe.horizontal === null && (Math.abs(dx) > SWIPE_LOCK || Math.abs(dy) > SWIPE_LOCK)) {
+    swipe.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+    if (!swipe.horizontal) swipe.active = false; // senkrecht → normal scrollen lassen
+  }
+  if (swipe.horizontal) {
+    swipe.dx = dx;
+    if (!reducedMotion()) setSwipeOffset(dx * 0.5, false);
+    return true;
+  }
+  return false;
+}
+
+function swipeEnd() {
   if (!swipe.active) return;
   swipe.active = false;
-  const dx = e.clientX - swipe.x;
-  const dy = e.clientY - swipe.y;
-  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-    swipe.moved = true;
-    shiftWeek(dx < 0 ? 1 : -1);
-    setTimeout(() => { swipe.moved = false; }, 50);
+  if (!swipe.horizontal) return;
+  swipe.moved = true;
+  setTimeout(() => { swipe.moved = false; }, 350); // Klick nach dem Wischen ignorieren
+  if (Math.abs(swipe.dx) >= SWIPE_MIN) {
+    const dir = swipe.dx < 0 ? 1 : -1;
+    setSwipeOffset(0, false);
+    shiftWeek(dir);
+    if (!reducedMotion()) {
+      setSwipeOffset(-dir * 40, false);           // neue Woche kommt von der Seite
+      requestAnimationFrame(() => requestAnimationFrame(() => setSwipeOffset(0, true)));
+    }
+  } else {
+    setSwipeOffset(0, true);                      // zurückfedern
   }
+}
+
+function reducedMotion() {
+  return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+swipeTargets().forEach(el => {
+  el.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { swipe.active = false; return; }
+    swipeStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (swipeMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  el.addEventListener('touchend', swipeEnd);
+  el.addEventListener('touchcancel', () => { swipe.active = false; setSwipeOffset(0, true); });
+
+  // Maus (PC): gleiche Geste mit gedrückter Maustaste
+  el.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') swipeStart(e.clientX, e.clientY); });
 });
-$('#dayStrip').addEventListener('pointercancel', () => { swipe.active = false; });
+window.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') swipeMove(e.clientX, e.clientY); });
+window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') swipeEnd(); });
 // "Heute": springt zu heute bzw. zum nächsten kommenden Termin
 $('#btnToday').onclick = () => {
   if (state.view === 'week') {

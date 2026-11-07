@@ -698,24 +698,32 @@ window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') cardS
 
 /* --- Pull-to-Refresh in Liste und Woche --- */
 
-const PTR_TRIGGER = 70;   // so weit ziehen, dann wird neu geladen
-const PTR_MAX = 110;
+// Bewusst ziehen: Der Inhalt wandert sichtbar mit (mit Widerstand). Ausgelöst wird
+// erst bei PTR_TRIGGER Pixel Zugweg – das sind rund 180 px Fingerweg.
+const PTR_RESIST = 0.45;   // Inhalt bewegt sich mit 45 % des Fingerwegs
+const PTR_TRIGGER = 80;    // ab diesem sichtbaren Zugweg wird neu geladen
+const PTR_MAX = 120;
 const ptr = { y: 0, x: 0, pull: 0, active: false, axis: null, moved: false, loading: false };
 const reloadBtn = $('#btnReload');
 
-/** Zieh-Anzeige am ↻-Knopf oben: färbt sich ein und dreht sich mit dem Finger. */
-function setPtr(px) {
+/** Steht die Seite ganz oben? Prüft Fenster und mögliche Scroll-Container. */
+function atPageTop() {
+  const se = document.scrollingElement || document.documentElement;
+  return Math.max(window.scrollY || 0, se.scrollTop || 0, document.body.scrollTop || 0) <= 0;
+}
+
+/** Zieh-Anzeige: Inhalt rutscht mit, der ↻-Knopf färbt sich ein und dreht sich. */
+function setPtr(px, animate) {
   const icn = reloadBtn.querySelector('.ic');
   reloadBtn.classList.toggle('pulling', px > 0);
   reloadBtn.classList.toggle('ready', px >= PTR_TRIGGER);
-  if (icn) icn.style.transform = px > 0 ? `rotate(${Math.round(px * 3.2)}deg)` : '';
+  if (icn) icn.style.transform = px > 0 ? `rotate(${Math.round(px * 3)}deg)` : '';
+  listEl.style.transition = animate && !reducedMotion() ? 'transform .25s ease-out' : 'none';
+  listEl.style.transform = px > 0 ? `translateY(${px}px)` : '';
 }
 
-
-
-
 function ptrStart(x, y) {
-  if (window.scrollY > 0 || ptr.loading || state.busy || !sheetEl.hidden || state.page) return;
+  if (!atPageTop() || ptr.loading || state.busy || !sheetEl.hidden || state.page) return;
   Object.assign(ptr, { x, y, pull: 0, active: true, axis: null, moved: false });
 }
 
@@ -723,12 +731,13 @@ function ptrMove(x, y) {
   if (!ptr.active) return false;
   const dx = x - ptr.x, dy = y - ptr.y;
   if (ptr.axis === null && (Math.abs(dx) > AXIS_LOCK || Math.abs(dy) > AXIS_LOCK)) {
-    ptr.axis = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && window.scrollY <= 0 ? 'down' : 'other';
+    ptr.axis = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.5 && atPageTop() ? 'down' : 'other';
     if (ptr.axis !== 'down') { ptr.active = false; return false; }
   }
   if (ptr.axis !== 'down') return false;
-  ptr.pull = Math.max(0, Math.min(PTR_MAX, dy * 0.5));
-  setPtr(ptr.pull);
+  if (!atPageTop()) { ptr.active = false; setPtr(0, true); return false; }
+  ptr.pull = Math.max(0, Math.min(PTR_MAX, (dy - AXIS_LOCK) * PTR_RESIST));
+  setPtr(ptr.pull, false);
   return true;
 }
 
@@ -739,7 +748,7 @@ async function ptrEnd() {
   ptr.moved = true;
   setTimeout(() => { ptr.moved = false; }, 350);
   const go = ptr.pull >= PTR_TRIGGER;
-  setPtr(0);
+  setPtr(0, true);                        // Inhalt federt zurück
   if (!go) return;
   ptr.loading = true;
   reloadBtn.classList.add('ready');      // bleibt eingefärbt, solange geladen wird
@@ -752,13 +761,15 @@ async function ptrEnd() {
 // am ganzen App-Bereich, damit auch leere Listen gezogen werden können
 appEl.addEventListener('touchstart', e => {
   if (e.touches.length === 1 && !e.target.closest('#dayStrip, .swipe-wrap.dragging')) ptrStart(e.touches[0].clientX, e.touches[0].clientY);
+  else ptr.active = false;
 }, { passive: true });
 appEl.addEventListener('touchmove', e => {
   if (cardSwipe.axis === 'x' && cardSwipe.wrap) return;
+  if (e.touches.length !== 1) { ptr.active = false; return; }
   if (ptrMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
 }, { passive: false });
 appEl.addEventListener('touchend', ptrEnd);
-appEl.addEventListener('touchcancel', () => { ptr.active = false; if (!ptr.loading) setPtr(0); });
+appEl.addEventListener('touchcancel', () => { ptr.active = false; if (!ptr.loading) setPtr(0, true); });
 
 /* --- Sheet nach unten ziehen zum Schließen (iPhone-App ohne Zurück-Geste) --- */
 

@@ -37,7 +37,7 @@ In diesem Repository stehen keine Termine, Passwörter oder Codes.
 ## Änderungen
 
 - **App:** nach Änderungen an `index.html`, `app.css`, `app.js`, `icons.js` oder `config.js`
-  in `sw.js` die Cache-Version erhöhen (`dienstplan-v4` → `dienstplan-v5`).
+  in `sw.js` die Cache-Version erhöhen (z. B. `dienstplan-v5` → `dienstplan-v6`).
 - **Schnittstelle:** `apps-script/*.gs` ins Apps-Script-Projekt kopieren, speichern, dann
   *Bereitstellungen verwalten → bestehende Bereitstellung → Stift → Neue Version → Bereitstellen*.
   Die `/exec`-Adresse zeigt im Browser die bereitgestellte `version`.

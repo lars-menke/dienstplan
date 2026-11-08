@@ -1,6 +1,6 @@
 # 🚒 Dienstplan-PWA – Spezifikation
 
-> **Stand:** 08.11.2026 · Version 2 (freigegeben) · Schnittstelle 4.0
+> **Stand:** 08.11.2026 · Version 2 (freigegeben) · Schnittstelle 4.0 · neues App-Icon
 > Diese Datei fasst die frühere Version 1 und die Ergänzung „Version 2“ zusammen und beschreibt den **heutigen Stand** der App. Sie ist die Grundlage für Weiterentwicklung und Design.
 > **Design-Vorlage:** Canvas „Dienstplan – neues Design“ (Claude Design). Die Artboards liegen als Referenz-Markup unter `docs/design/` (`*.dc.html`, `*-Dunkel.dc.html` = dunkle Variante).
 
@@ -278,7 +278,7 @@ In der Farbauswahl stehen immer die echten Google-Farben; nur die Punkte in List
 Unter-Screens sind **Bottom Sheets** über der Liste; die Verwaltung (Kategorien, Zugangscodes) sind eigene **Seiten** mit Zurück-Knopf. Sheets und Seiten legen einen Eintrag im Browser-Verlauf an und schließen mit der Zurück-Taste (siehe Kapitel 10).
 
 ### 9.1 Anmeldung (`Anmeldung`)
-Rote Vollfläche, unabhängig vom Theme. Logo, „Dienstplan“, Erklärsatz, Feld „Zugangscode“ (Monospace, Großbuchstaben, Bindestriche egal), [Anmelden], Hinweis zum Anmelde-Link. Fehlermeldung unter dem Knopf. Alternativ Anmelde-Link `#code=…`.
+Rote Vollfläche, unabhängig vom Theme. Logo (Kalender mit Haken), „Dienstplan“, darunter „Alle Termine der Feuerwehr Wildeshausen auf einen Blick.“, Feld „Zugangscode“ (Monospace, Großbuchstaben, Bindestriche egal), [Anmelden]. Fehlermeldung unter dem Knopf. Alternativ Anmelde-Link `#code=…`.
 
 ### 9.2 Terminliste (`Main`)
 - **Kopfzeile:** Logo, „Dienstplan“, darunter Sync-Stand („✓ Im Kalender · Stand 08:31“ bzw. „Wird gespeichert…“ / „Offline · Stand …“), Knöpfe ↻ (neu laden, zeigt auch Ziehen-zum-Aktualisieren) und ⋯ (Weitere Aktionen).
@@ -503,9 +503,10 @@ Content-Type: text/plain;charset=utf-8
 
 | Thema | Umsetzung |
 |---|---|
-| Manifest | `manifest.webmanifest`: „Dienstplan Feuerwehr“ / „Dienstplan“, `standalone`, Theme `#c62828`, Icons 192/512 (auch maskable) |
+| Manifest | `manifest.webmanifest`: „Dienstplan Feuerwehr“ / „Dienstplan“, `standalone`, Theme `#c62828`, Icons 192/512 (`any`) und `icon-maskable-512.png` (`maskable`, mit mehr Rand für Android) |
+| App-Icon | Kalender mit Haken, weiß auf Feuerwehrrot `#c62828` – dasselbe Zeichen wie das Logo auf der Anmeldung; Dateien `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` (180 px), `favicon.png` (64 px) |
 | iOS | `apple-touch-icon.png` (180 px), `apple-mobile-web-app-capable` |
-| Service Worker | `sw.js`, Cache `dienstplan-v4`; erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
+| Service Worker | `sw.js`, Cache `dienstplan-v5`; erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
 | Lokaler Speicher | `dienstplan.code` (Zugangscode), `dienstplan.data` (letzte Liste), `dienstplan.theme`, `dienstplan.view` (`list`/`week`), `dienstplan.swipeHintSeen` |
 | Aktualisierung | nach Änderungen an App-Dateien die Cache-Version in `sw.js` erhöhen |
 | Offline | App öffnet mit letztem Stand; Änderungen offline nicht möglich |
@@ -573,7 +574,7 @@ Content-Type: text/plain;charset=utf-8
 | `app.js` | gesamte Logik (Anmeldung, API, Liste, Woche, Sheets, Gesten, Verwaltung) |
 | `icons.js` | Inline-SVG-Icons |
 | `config.js` | `API_URL`, `TEMPLATES` |
-| `manifest.webmanifest`, `*.png` | Name und Icons |
+| `manifest.webmanifest`, `*.png` | Name und App-Icon (Kalender mit Haken) |
 | `sw.js` | Service Worker |
 | `beta/` | nur noch Weiterleitung + Aufräum-Service-Worker der früheren Testversion |
 | `apps-script/Dienstplan-Sync.gs` | Sync, Status-Logik, Kategorien, Sheet-Menü |
@@ -592,3 +593,4 @@ Content-Type: text/plain;charset=utf-8
 | 07.11.2026 | Etappen 2–4 als Testversion unter `beta/`: neues Design, Hell/Dunkel, Verwaltung in der App, Wochenansicht, Vorlagen |
 | 08.11.2026 | Etappe 5: Wischgesten, Zurück-Taste, Ziehen zum Aktualisieren; Codes in der App löschen |
 | 08.11.2026 | Etappe 6: neue Oberfläche freigegeben, `beta/` abgebaut, Feld `categories` entfernt (Schnittstelle 4.0), Spezifikationen zusammengeführt |
+| 08.11.2026 | Anmeldung entschlackt (neuer Satz, Hinweis entfernt), neues App-Icon „Kalender mit Haken“, Cache `dienstplan-v5` |

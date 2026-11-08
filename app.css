@@ -688,7 +688,6 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 }
 .login :focus-visible { outline-color: #fff; }
 .login-err { margin: 0; min-height: 20px; font-size: 14px; font-weight: 600; text-align: center; }
-.login-hint { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: #ffe1e1; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
   .sheet, .backdrop, .toast, .switch .knob, .switch .track { transition: none; }

@@ -1,4 +1,4 @@
-# 🚒 Dienstplan – Handy-App
+# 🚒 Dienstplan AchtzehnZwo – Handy-App
 
 Web-App (PWA), um den Dienstplan der Feuerwehr vom Handy aus zu pflegen und anzusehen:
 Liste und Wochenansicht, Termine anlegen, bearbeiten, absagen, verschieben – mit Rollen
@@ -21,6 +21,7 @@ Handy (diese App, GitHub Pages)  →  Apps Script (Schnittstelle)  →  Google S
 | `config.js` | Link zur Apps-Script-Schnittstelle (`…/exec`) und Vorlagen für neue Termine |
 | `manifest.webmanifest`, `*.png` | Name und Icon für den Startbildschirm |
 | `sw.js` | Service Worker (schneller Start, öffnet auch offline) |
+| `fonts/` | Schriften für den Titel-Schriftzug (mit Lizenzen) |
 | `beta/` | nur noch Weiterleitung der früheren Testversion (kann später gelöscht werden) |
 | `apps-script/` | Kopie der Apps-Script-Dateien; sie laufen im Apps-Script-Projekt am Sheet |
 | `docs/PWA-Spezifikation.md` | vollständige Spezifikation (Funktionen, Design, API, Betrieb) |
@@ -37,7 +38,7 @@ In diesem Repository stehen keine Termine, Passwörter oder Codes.
 ## Änderungen
 
 - **App:** nach Änderungen an `index.html`, `app.css`, `app.js`, `icons.js` oder `config.js`
-  in `sw.js` die Cache-Version erhöhen (z. B. `dienstplan-v5` → `dienstplan-v6`).
+  in `sw.js` die Cache-Version erhöhen (z. B. `dienstplan-v6` → `dienstplan-v7`).
 - **Schnittstelle:** `apps-script/*.gs` ins Apps-Script-Projekt kopieren, speichern, dann
   *Bereitstellungen verwalten → bestehende Bereitstellung → Stift → Neue Version → Bereitstellen*.
   Die `/exec`-Adresse zeigt im Browser die bereitgestellte `version`.

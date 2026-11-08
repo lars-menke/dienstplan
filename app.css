@@ -117,6 +117,37 @@
   }
 }
 
+/* ---------- Schriften (nur für den Titel „Dienstplan AchtzehnZwo“) ---------- */
+
+@font-face {
+  font-family: "Permanent Marker";
+  src: url("fonts/permanent-marker.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  src: url("fonts/barlow-condensed-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+.title-kicker {
+  display: block;
+  font-family: "Barlow Condensed", var(--font);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.title-script {
+  display: block;
+  font-family: "Permanent Marker", var(--font);
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
 /* ---------- Grundlagen ---------- */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -168,12 +199,16 @@ body { overflow-x: hidden; }
   display: flex; align-items: center; justify-content: center;
 }
 .brand { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.brand h1 {
-  margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1;
-  display: flex; align-items: center; gap: 8px;
+.brand h1 { margin: 0; }
+/* Titel in der Kopfzeile: Kicker „DIENSTPLAN“ über dem Schriftzug „AchtzehnZwo“ */
+.top .brand h1 { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.top .title-kicker { font-size: 11px; letter-spacing: .28em; color: var(--muted); line-height: 1.2; }
+.top .title-script { font-size: 22px; line-height: 1.15; color: var(--accent-text); }
+@media (max-width: 360px) {
+  .top .title-script { font-size: 19px; }
 }
 .sync {
-  margin: 0; font-size: 13px; color: var(--muted);
+  margin: 0; font-size: 12px; color: var(--muted);
   display: flex; align-items: center; gap: 5px; min-height: 18px;
 }
 .sync .ok { color: var(--ok); }
@@ -673,7 +708,9 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
   width: 88px; height: 88px; border-radius: 24px; background: #fff; color: #c62828;
   display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .2);
 }
-.login h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -.02em; }
+.login h1 { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-weight: 400; }
+.login .title-kicker { font-size: 18px; letter-spacing: .32em; color: #ffe1e1; line-height: 1.2; }
+.login .title-script { font-size: 40px; line-height: 1.2; color: #ffffff; }
 .login-hero p { margin: 0; font-size: 16px; line-height: 1.45; color: #ffe1e1; }
 .login-form { display: flex; flex-direction: column; gap: 12px; }
 .login-form label { font-size: 13px; font-weight: 600; color: #ffe1e1; }

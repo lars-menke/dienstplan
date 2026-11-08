@@ -1,7 +1,7 @@
 // Service Worker: hält die App-Dateien vor, damit sie schnell startet
 // und auch ohne Netz öffnet. Termine kommen immer frisch vom Server.
 // Bei jeder Änderung an den App-Dateien die Versionsnummer erhöhen.
-const CACHE = 'dienstplan-v5';
+const CACHE = 'dienstplan-v6';
 const FILES = [
   './',
   'index.html',
@@ -15,6 +15,8 @@ const FILES = [
   'icon-maskable-512.png',
   'apple-touch-icon.png',
   'favicon.png',
+  'fonts/permanent-marker.woff2',
+  'fonts/barlow-condensed-600.woff2',
 ];
 
 self.addEventListener('install', event => {

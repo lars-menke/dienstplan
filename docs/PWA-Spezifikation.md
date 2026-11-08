@@ -1,6 +1,6 @@
-# 🚒 Dienstplan-PWA – Spezifikation
+# 🚒 Dienstplan AchtzehnZwo – PWA-Spezifikation
 
-> **Stand:** 08.11.2026 · Version 2 (freigegeben) · Schnittstelle 4.0 · neues App-Icon
+> **Stand:** 08.11.2026 · Version 2 (freigegeben) · Schnittstelle 4.0 · neues App-Icon · Titel „Dienstplan AchtzehnZwo“
 > Diese Datei fasst die frühere Version 1 und die Ergänzung „Version 2“ zusammen und beschreibt den **heutigen Stand** der App. Sie ist die Grundlage für Weiterentwicklung und Design.
 > **Design-Vorlage:** Canvas „Dienstplan – neues Design“ (Claude Design). Die Artboards liegen als Referenz-Markup unter `docs/design/` (`*.dc.html`, `*-Dunkel.dc.html` = dunkle Variante).
 
@@ -278,10 +278,10 @@ In der Farbauswahl stehen immer die echten Google-Farben; nur die Punkte in List
 Unter-Screens sind **Bottom Sheets** über der Liste; die Verwaltung (Kategorien, Zugangscodes) sind eigene **Seiten** mit Zurück-Knopf. Sheets und Seiten legen einen Eintrag im Browser-Verlauf an und schließen mit der Zurück-Taste (siehe Kapitel 10).
 
 ### 9.1 Anmeldung (`Anmeldung`)
-Rote Vollfläche, unabhängig vom Theme. Logo (Kalender mit Haken), „Dienstplan“, darunter „Alle Termine der Feuerwehr Wildeshausen auf einen Blick.“, Feld „Zugangscode“ (Monospace, Großbuchstaben, Bindestriche egal), [Anmelden]. Fehlermeldung unter dem Knopf. Alternativ Anmelde-Link `#code=…`.
+Rote Vollfläche, unabhängig vom Theme. Logo (Kalender mit Haken), Titel als Logo-Schriftzug (Kapitel 12.1: Kicker „DIENSTPLAN“ 18 px, `#ffe1e1`, Sperrung .32em; darunter „AchtzehnZwo“ 40 px, weiß, Abstand 2 px), darunter „Alle Termine der Feuerwehr Wildeshausen auf einen Blick.“, Feld „Zugangscode“ (Monospace, Großbuchstaben, Bindestriche egal), [Anmelden]. Fehlermeldung unter dem Knopf. Alternativ Anmelde-Link `#code=…`.
 
 ### 9.2 Terminliste (`Main`)
-- **Kopfzeile:** Logo, „Dienstplan“, darunter Sync-Stand („✓ Im Kalender · Stand 08:31“ bzw. „Wird gespeichert…“ / „Offline · Stand …“), Knöpfe ↻ (neu laden, zeigt auch Ziehen-zum-Aktualisieren) und ⋯ (Weitere Aktionen).
+- **Kopfzeile:** Logo, Titel als Logo-Schriftzug (Kicker „DIENSTPLAN“ 11 px, `--muted`, Sperrung .28em; „AchtzehnZwo“ 22 px in `--accent-text` – hell Feuerwehrrot, dunkel Signalgelb; bis 360 px Breite 19 px), darunter Sync-Stand (12 px) („✓ Im Kalender · Stand 08:31“ bzw. „Wird gespeichert…“ / „Offline · Stand …“), Knöpfe ↻ (neu laden, zeigt auch Ziehen-zum-Aktualisieren) und ⋯ (Weitere Aktionen).
 - Umschalter **Liste | Woche** (gemerkt in `dienstplan.view`) und Knopf **Heute**.
 - Suchfeld (Titel, Ort, Beschreibung, Kategorie; durchsucht auch vergangene Termine).
 - Gelber Offline-Streifen bei veraltetem Stand.
@@ -370,6 +370,27 @@ Einheitliches Sheet: Titel, ein erklärender Satz, [Aktion] (primär), [Zurück]
 ## 12. Design-Tokens
 
 Schrift: Systemschrift (`Inter` wird genutzt, falls installiert; nicht mitgeliefert). Maße und Radien siehe Kapitel 13.
+
+### 12.1 Titel „Dienstplan AchtzehnZwo“ (Logo-Schriftzug)
+
+Der Titel ist ein zweizeiliger Schriftzug – auf der Anmeldung und in der Kopfzeile gleich aufgebaut. **Nur hier** werden eigene Schriften verwendet; der Rest der App bleibt bei der Systemschrift.
+
+```html
+<h1 aria-label="Dienstplan AchtzehnZwo">
+  <span class="title-kicker" aria-hidden="true">Dienstplan</span>
+  <span class="title-script" aria-hidden="true">AchtzehnZwo</span>
+</h1>
+```
+
+| Teil | Schrift | Anmeldung | Kopfzeile |
+|---|---|---|---|
+| Kicker „DIENSTPLAN“ | Barlow Condensed 600, Versalien, gesperrt | 18 px, Sperrung .32em, `#ffe1e1` | 11 px, Sperrung .28em, `--muted`, Zeilenhöhe 1.2 |
+| Schriftzug „AchtzehnZwo“ | Permanent Marker 400, kein Umbruch | 40 px, Zeilenhöhe 1.2, weiß | 22 px (≤ 360 px Breite: 19 px), Zeilenhöhe 1.15, `--accent-text` |
+
+- „AchtzehnZwo“ in einem Wort, A und Z groß.
+- Schriften liegen in `fonts/` (`permanent-marker.woff2` – Apache 2.0, `barlow-condensed-600.woff2` – SIL OFL; Lizenztexte daneben), eingebunden per `@font-face` mit `font-display: swap`, im Service Worker für offline zwischengespeichert.
+- Screenreader lesen „Dienstplan AchtzehnZwo“ (`aria-label`), die Einzelteile sind `aria-hidden`.
+- Name: `<title>` und Manifest-`name` „Dienstplan AchtzehnZwo“; `short_name` und `apple-mobile-web-app-title` bleiben „Dienstplan“ (unter dem Homescreen-Icon würde Längeres abgeschnitten).
 
 | Token | Hell | Dunkel | Verwendung |
 |---|---|---|---|
@@ -503,10 +524,10 @@ Content-Type: text/plain;charset=utf-8
 
 | Thema | Umsetzung |
 |---|---|
-| Manifest | `manifest.webmanifest`: „Dienstplan Feuerwehr“ / „Dienstplan“, `standalone`, Theme `#c62828`, Icons 192/512 (`any`) und `icon-maskable-512.png` (`maskable`, mit mehr Rand für Android) |
+| Manifest | `manifest.webmanifest`: „Dienstplan AchtzehnZwo“ / „Dienstplan“, `standalone`, Theme `#c62828`, Icons 192/512 (`any`) und `icon-maskable-512.png` (`maskable`, mit mehr Rand für Android) |
 | App-Icon | Kalender mit Haken, weiß auf Feuerwehrrot `#c62828` – dasselbe Zeichen wie das Logo auf der Anmeldung; Dateien `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` (180 px), `favicon.png` (64 px) |
 | iOS | `apple-touch-icon.png` (180 px), `apple-mobile-web-app-capable` |
-| Service Worker | `sw.js`, Cache `dienstplan-v5`; erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
+| Service Worker | `sw.js`, Cache `dienstplan-v6` (inkl. Schriften in `fonts/`); erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
 | Lokaler Speicher | `dienstplan.code` (Zugangscode), `dienstplan.data` (letzte Liste), `dienstplan.theme`, `dienstplan.view` (`list`/`week`), `dienstplan.swipeHintSeen` |
 | Aktualisierung | nach Änderungen an App-Dateien die Cache-Version in `sw.js` erhöhen |
 | Offline | App öffnet mit letztem Stand; Änderungen offline nicht möglich |
@@ -556,7 +577,7 @@ Content-Type: text/plain;charset=utf-8
 
 ## 23. Bekannte Grenzen & offene Punkte
 1. **Vorlagen** stehen fest in `config.js`; Pflege im Sheet bzw. in der App wäre möglich.
-2. **Schrift:** Inter mitliefern oder Systemschrift beibehalten.
+2. **Schrift:** Für den Titel werden Permanent Marker und Barlow Condensed mitgeliefert; für den Rest bleibt es bei der Systemschrift (Inter nur, falls installiert).
 3. **Akzentfarbe:** Feuerwehrrot (Hell) / Signalgelb (Dunkel) – bewusst so entschieden.
 4. **Mannschafts-Code verteilen:** Weg festlegen (z. B. WhatsApp-Community).
 5. Rund 50 Termine sind noch keiner Kategorie zugeordnet (manuell oder per Vorschlags-Funktion nach Ergänzen der Stichwörter).
@@ -576,6 +597,7 @@ Content-Type: text/plain;charset=utf-8
 | `config.js` | `API_URL`, `TEMPLATES` |
 | `manifest.webmanifest`, `*.png` | Name und App-Icon (Kalender mit Haken) |
 | `sw.js` | Service Worker |
+| `fonts/` | Titel-Schriften (Permanent Marker, Barlow Condensed 600) mit Lizenzen |
 | `beta/` | nur noch Weiterleitung + Aufräum-Service-Worker der früheren Testversion |
 | `apps-script/Dienstplan-Sync.gs` | Sync, Status-Logik, Kategorien, Sheet-Menü |
 | `apps-script/WebApp.gs` | Schnittstelle, Rollen, Zugangscodes |
@@ -594,3 +616,4 @@ Content-Type: text/plain;charset=utf-8
 | 08.11.2026 | Etappe 5: Wischgesten, Zurück-Taste, Ziehen zum Aktualisieren; Codes in der App löschen |
 | 08.11.2026 | Etappe 6: neue Oberfläche freigegeben, `beta/` abgebaut, Feld `categories` entfernt (Schnittstelle 4.0), Spezifikationen zusammengeführt |
 | 08.11.2026 | Anmeldung entschlackt (neuer Satz, Hinweis entfernt), neues App-Icon „Kalender mit Haken“, Cache `dienstplan-v5` |
+| 08.11.2026 | Titel „Dienstplan AchtzehnZwo“ als Logo-Schriftzug (Permanent Marker + Barlow Condensed), Cache `dienstplan-v6` |

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Dienstplan</title>
+<title>Dienstplan AchtzehnZwo</title>
 <meta name="description" content="Dienstplan der Feuerwehr – Termine verwalten">
 <meta name="theme-color" content="#f4f3f0">
 <!-- Theme vor dem ersten Rendern setzen, damit nichts hell aufblitzt (V2, Kapitel 6) -->
@@ -30,7 +30,10 @@
   <section class="login" id="login" hidden aria-labelledby="loginTitle">
     <div class="login-hero">
       <div class="login-logo" data-icon="calendarCheck" data-size="44"></div>
-      <h1 id="loginTitle">Dienstplan</h1>
+      <h1 id="loginTitle" aria-label="Dienstplan AchtzehnZwo">
+        <span class="title-kicker" aria-hidden="true">Dienstplan</span>
+        <span class="title-script" aria-hidden="true">AchtzehnZwo</span>
+      </h1>
       <p>Alle Termine der Feuerwehr Wildeshausen auf einen Blick.</p>
     </div>
     <form class="login-form" id="loginForm" novalidate>
@@ -49,7 +52,10 @@
         <div class="top-row">
           <div class="app-logo" data-icon="calendar" data-size="22"></div>
           <div class="brand">
-            <h1>Dienstplan</h1>
+            <h1 aria-label="Dienstplan AchtzehnZwo">
+              <span class="title-kicker" aria-hidden="true">Dienstplan</span>
+              <span class="title-script" aria-hidden="true">AchtzehnZwo</span>
+            </h1>
             <p class="sync" id="syncState" aria-live="polite"></p>
           </div>
           <button class="icon-btn" id="btnReload" type="button" aria-label="Neu laden" data-icon="refresh"></button>

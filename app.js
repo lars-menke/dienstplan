@@ -187,7 +187,7 @@ async function mutate(btn, action, data, onSuccess) {
   const buttons = sheetEl.querySelectorAll('button, input, textarea');
   buttons.forEach(b => (b.disabled = true));
   const label = btn.innerHTML;
-  btn.innerHTML = `<span class="spin"></span>${action === 'syncAll' ? 'Wird synchronisiert…' : 'Wird gespeichert…'}`;
+  btn.innerHTML = '<span class="spin"></span>Wird gespeichert…';
   try {
     const d = await api(action, data);
     if (d.events) applyData(d);
@@ -210,7 +210,8 @@ async function mutate(btn, action, data, onSuccess) {
   }
 }
 
-const ref = ev => ({ row: ev.row, eventId: ev.eventId, subject: ev.subject });
+// Termine werden nur noch über ihre eventId angesprochen (V3 7.1)
+const ref = ev => ({ eventId: ev.eventId });
 const setStatus = (ev, status, btn, extra) => mutate(btn, 'setStatus', Object.assign({ ref: ref(ev), status }, extra || {}));
 
 /* ---------- Datum ---------- */
@@ -389,7 +390,8 @@ function render() {
 }
 
 function cardKey(ev) {
-  return ev.eventId || 'r' + ev.row;
+  // eventId; nur für noch nicht übertragene Sheet-Zeilen (Datenquelle „sheet“) ein Anzeige-Schlüssel
+  return ev.eventId || `tmp-${ev.date}-${ev.subject}`;
 }
 
 /** Karten wischen: nur Schreiben/Admin, nur aktive Termine, nur in der Liste. */
@@ -544,7 +546,7 @@ function renderWeek() {
         meta = `${color ? `<span class="dot" style="background:${color}"></span>` : ''}${[shortTime(ev), ev.location].filter(Boolean).map(esc).join(' · ')}`;
       }
       const statusWord = ev.status === S.ABGESAGT ? ', abgesagt' : ev.status === S.VERSCHOBEN ? ', verschoben' : '';
-      return `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(ev.eventId || 'r' + ev.row)}"
+      return `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(cardKey(ev))}"
           aria-label="${esc(`${ev.subject}, ${timeText(ev)}${ev.location ? ', ' + ev.location : ''}${statusWord}`)}">
         <span class="wmeta" aria-hidden="true">${meta}</span><span class="wtitle" aria-hidden="true">${esc(ev.subject)}</span></button>`;
     }).join('');
@@ -1226,6 +1228,7 @@ function openForm(ev) {
   $('#fOk').onclick = btnEv => {
     const data = {
       ref: isNew ? null : ref(ev),
+      eventId: isNew ? '' : ev.eventId,
       subject: $('#fSub').value.trim(),
       allDay: $('#fAll').checked,
       date: $('#fDate').value,
@@ -1283,10 +1286,6 @@ function openMore() {
         <button class="opt" type="button" data-admin="Kategorien">${icon('tags', 20)}<span class="grow">Kategorien</span><span class="count">${state.categoryList.length || ''}</span>${icon('chevronRight', 18)}</button>
         <button class="opt" type="button" data-admin="Zugangscodes">${icon('key', 20)}<span class="grow">Zugangscodes</span><span class="count">${state.codeCount || ''}</span>${icon('chevronRight', 18)}</button>
       </div>
-    </div>
-    <div class="stack">
-      <button class="btn small" type="button" id="xSync">${icon('refresh', 18)}Alle Termine jetzt synchronisieren</button>
-      <span class="small-note">Nur nötig, wenn direkt im Sheet etwas geändert wurde. Dauert bis zu einer Minute.</span>
     </div>` : ''}
 
     <button class="btn text" type="button" id="xLogout" style="color:var(--danger)">${icon('logout', 18)}Abmelden</button>
@@ -1301,7 +1300,6 @@ function openMore() {
     closeSheet();
     openPage(b.dataset.admin === 'Kategorien' ? 'categories' : 'codes');
   }));
-  if ($('#xSync')) $('#xSync').onclick = e => mutate(e.currentTarget, 'syncAll');
   $('#xLogout').onclick = () => confirmAct({
     title: 'Abmelden?',
     text: 'Auf diesem Gerät musst du danach den Zugangscode neu eingeben – auch in der normalen App.',

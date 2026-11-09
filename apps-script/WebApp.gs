@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '4.0 (neue Oberfläche freigegeben)',
+  VERSION: '5.0 (Kalender ist Master)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -80,7 +80,10 @@ function userInfo_(user) {
 }
 
 function handleAction_(action, data, user) {
-  checkTimezone_();
+  const calendarMode = isCalendarMode_();
+  checkTimezone_(calendarMode);
+  // V3: Termine und Kategorien direkt im Google Kalender (Kalender.gs)
+  if (calendarMode && V3_ACTIONS.includes(action)) return handleActionV3_(action, data, user);
   switch (action) {
     case 'getData': return withAdminInfo_(getAppData_(user.name), user);
     case 'saveEvent': return saveEvent_(data, user.name);
@@ -94,6 +97,9 @@ function handleAction_(action, data, user) {
     case 'updateCode': return updateCode_(data, user);
     case 'deleteCode': return deleteCode_(data, user);
     case 'rotateTeamCode': return rotateTeamCode_(user);
+    case 'saveEvents':
+    case 'setStatusBulk':
+      throw new Error('Diese Aktion gibt es erst, wenn der Google Kalender die Datenquelle ist.');
     default: throw new Error(`Unbekannte Aktion: ${action}`);
   }
 }
@@ -121,6 +127,8 @@ function requiredRole_(action, data) {
     case 'getData':
       return 'read';
     case 'saveEvent':
+    case 'saveEvents':
+    case 'setStatusBulk':
       return 'write';
     case 'setStatus':
       return normalizeStatus_(data.status) === CONFIG.STATUS.LOESCHEN ? 'admin' : 'write';
@@ -835,7 +843,8 @@ function runScheduledRefresh() {
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === 'runScheduledRefresh') ScriptApp.deleteTrigger(t);
   });
-  syncSheetToCalendar();
+  if (isCalendarMode_()) v3RefreshCalendar_(); // V3: betroffene Termine im Kalender neu schreiben
+  else syncSheetToCalendar();
 }
 
 /* =========================

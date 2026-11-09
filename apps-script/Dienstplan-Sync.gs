@@ -568,6 +568,7 @@ function syncSheetToCalendar() {
 }
 
 function syncSheetToCalendar_() {
+  assertSheetMode_('Der Sheet-Sync');
   const t0 = Date.now();
   checkTimezone_();
 
@@ -700,6 +701,16 @@ function upsertEvent_(ctx, rowIndex, rec, status, verschobenAuf) {
 function mergeForUpdate_(existing, payload) {
   const merged = Object.assign({}, existing, payload);
 
+  // Sheet-Weg ändert einen schon umgestellten Termin: V3-Kennzeichen entfernen, damit die
+  // App den Termin nach einem Zurückschalten aus dem sichtbaren Text ableitet (V3 2.4)
+  // statt veraltete Zusatzfelder zu lesen.
+  const priv = existing.extendedProperties && existing.extendedProperties.private;
+  if (!payload.extendedProperties && priv && priv.dp) {
+    const rest = Object.assign({}, priv);
+    delete rest.dp;
+    merged.extendedProperties = Object.assign({}, existing.extendedProperties, { private: rest });
+  }
+
   if (!payload.colorId) delete merged.colorId;
 
   if (payload.recurrence) {
@@ -790,6 +801,7 @@ function menu_importCalendarToSheet() {
 }
 
 function importCalendarToSheet_(from, to, dryRun) {
+  assertSheetMode_('Der Import Kalender → Liste');
   const t0 = Date.now();
   const sheet = getSheet_();
   let map = ensureRequiredColumns_();
@@ -952,6 +964,7 @@ function menu_cleanupNonSheetBeforeDate() {
 }
 
 function cleanupNonSheetByRange_(mode, pivotDate, filterText, dryRun, skipSpecialTypes) {
+  assertSheetMode_('Das Bereinigen');
   Calendar.Calendars.get(CONFIG.CALENDAR_ID);
 
   const sheet = getSheet_();
@@ -988,6 +1001,7 @@ function cleanupNonSheetByRange_(mode, pivotDate, filterText, dryRun, skipSpecia
         protectedCount++; continue;
       }
       if (desc.includes(marker)) { protectedCount++; continue; }
+      if (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.dp) { protectedCount++; continue; }
 
       if (needle && !(title.includes(needle) || desc.includes(needle) || loc.includes(needle))) continue;
 
@@ -1154,9 +1168,10 @@ function withLock_(fn) {
 }
 
 /** Script und Tabelle müssen in derselben Zeitzone laufen, sonst verrutschen Uhrzeiten. */
-function checkTimezone_() {
+function checkTimezone_(scriptOnly) {
   const scriptTz = Session.getScriptTimeZone();
-  const sheetTz = getSs_().getSpreadsheetTimeZone();
+  // scriptOnly: Kalender-Modus der App – die Tabelle zu öffnen kostet bei jeder Anfrage Zeit
+  const sheetTz = scriptOnly ? CONFIG.TIMEZONE : getSs_().getSpreadsheetTimeZone();
   const problems = [];
   if (scriptTz !== CONFIG.TIMEZONE) problems.push(`Script-Projekt steht auf ${scriptTz} (Apps Script → Projekteinstellungen → Zeitzone)`);
   if (sheetTz !== CONFIG.TIMEZONE) problems.push(`Tabelle steht auf ${sheetTz} (Datei → Einstellungen → Zeitzone)`);
@@ -1390,7 +1405,7 @@ function categoryInfo_(rec, categories) {
   };
 }
 
-function buildEventResource_(rec, start, end, isAllDay, categories, status, verschobenAuf) {
+function buildEventResource_(rec, start, end, isAllDay, categories, status, verschobenAuf, opts) {
   const S = CONFIG.STATUS;
   const cat = categoryInfo_(rec, categories);
   let summary = rec.subject;
@@ -1420,7 +1435,7 @@ function buildEventResource_(rec, start, end, isAllDay, categories, status, vers
 
   const resource = {
     summary,
-    description: appendMarker_(desc, CONFIG.SYNC_MARKER),
+    description: opts && opts.noMarker ? desc : appendMarker_(desc, CONFIG.SYNC_MARKER), // V3: ohne Marker
     location: rec.location || '',
   };
   if (colorId) resource.colorId = colorId;

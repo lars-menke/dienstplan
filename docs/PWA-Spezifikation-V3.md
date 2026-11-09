@@ -1,6 +1,6 @@
 # Dienstplan AchtzehnZwo – Spezifikation Version 3 (Ergänzung)
 
-> **Stand:** 08.11.2026 · ergänzt `docs/PWA-Spezifikation.md`.
+> **Stand:** 09.11.2026 · **in `docs/PWA-Spezifikation.md` eingearbeitet** (dort steht der heutige Stand). Dieses Dokument bleibt als Herleitung, für die Umstellung (Kap. 6), die Etappen (Kap. 9) und den Notfall-Rückweg (Kap. 9.1).
 > Alles, was hier nicht geändert wird, gilt weiter.
 > **Kern von V3:** Das Google Sheet ist nicht mehr der Datenspeicher. **Der Google Kalender ist der Master.** Die App liest und schreibt über Apps Script direkt in den Kalender. Das Sheet bleibt als **nächtliches Backup** in derselben Datei.
 

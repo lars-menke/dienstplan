@@ -1,6 +1,6 @@
 # Dienstplan AchtzehnZwo – Spezifikation Version 3 (Ergänzung)
 
-> **Stand:** 08.11.2026 · ergänzt `docs/PWA-Spezifikation.md`.
+> **Stand:** 09.11.2026 · **in `docs/PWA-Spezifikation.md` eingearbeitet** (dort steht der heutige Stand). Dieses Dokument bleibt als Herleitung, für die Umstellung (Kap. 6), die Etappen (Kap. 9) und den Notfall-Rückweg (Kap. 9.1).
 > Alles, was hier nicht geändert wird, gilt weiter.
 > **Kern von V3:** Das Google Sheet ist nicht mehr der Datenspeicher. **Der Google Kalender ist der Master.** Die App liest und schreibt über Apps Script direkt in den Kalender. Das Sheet bleibt als **nächtliches Backup** in derselben Datei.
 
@@ -187,10 +187,22 @@ Funktion **`migrateToCalendarV3()`** im Apps-Script-Editor, mit Probelauf `migra
 |---|---|---|
 | 1 | Datenschicht Kalender (Kap. 2–4), Umstellung mit Schalter `DATENQUELLE` (Kap. 6), App auf `eventId` (7.1) | App arbeitet direkt mit dem Kalender |
 | 2 | Backup ins Sheet, Schutz, Blatt `Gelöscht`, Wiederherstellen (Kap. 5) | Rückfallebene steht |
-| 3 | Aufräumen: alten Sheet-Weg, 15-Min-Sync, Marker-Logik und `LastSyncHash` entfernen; Schalter `DATENQUELLE` entfällt | schlanker Code, frühestens 2 Wochen nach Etappe 1 |
+| 3 | Aufräumen: alten Sheet-Weg, 15-Min-Sync, Marker-Logik und `LastSyncHash` entfernen; Schalter `DATENQUELLE` entfällt | schlanker Code (umgesetzt in 6.0, siehe 9.1) |
 | 4 | Tabellenansicht (7.2) | Bearbeiten in der Liste |
 | 5 | Import (7.3) | Excel/CSV/ICS direkt in den Kalender |
 | 6 | clasp + GitHub Action (Kap. 8), optional | Backend-Code wird automatisch bereitgestellt |
+
+### 9.1 Etappe 3 – umgesetzt (Schnittstelle 6.0)
+- Entfernt: Sheet-Weg der Schnittstelle, 15-Minuten-Sync, Import/Cleanup/Hard Delete, „Sheet einrichten“, Kategorien-Vorschläge, Marker „#Dienstplan 2026“ (alte Marker werden beim Ableiten fremder Termine weiter herausgefiltert), `LastSyncHash`, Schalter `DATENQUELLE` mit `setDataSource…()`, Umstellung `migrateToCalendarV3()`.
+- Neu: `aufraeumenEtappe3()` – einmalig im Editor; entfernt alte Trigger und die Eigenschaft `DATENQUELLE`, legt das nächtliche Backup an, falls es fehlt.
+- `Dienstplan-Sync.gs` enthält nur noch Konfiguration, Menü „📅 Dienstplan“ und Hilfsfunktionen; der Dateiname bleibt, damit im Editor nur Inhalte ersetzt werden.
+
+**Notfall-Rückweg (Sheet als Master, nur falls der Kalender-Weg ernsthaft versagt):**
+1. Im Repo den Branch `sicherung/v2-vor-kalender` öffnen und `WebApp.gs` sowie `Dienstplan-Sync.gs` von dort in den Editor kopieren; `Kalender.gs` im Editor löschen. Neu bereitstellen.
+2. In `DataSheet` die Hinweiszeile 1 („Backup vom …“) löschen, damit die Kopfzeile oben steht; den Blattschutz von `DataSheet` und `Categories` entfernen (Daten → Geschützte Blätter und Bereiche).
+3. Menü „🚒 Feuerwehr Kalender-Sync“ → „Automatischen Sync einschalten“. Die Spalte `LastSyncHash` legt der alte Code selbst an; beim ersten Sync wird jeder Termin einmal im alten Format geschrieben.
+4. Die App auf main bleibt nutzbar (sie spricht Termine über `eventId` an, das liefert auch der alte Sheet-Weg); Tabellenansicht, Mehrfachaktionen und Wiederholungen funktionieren dann nicht.
+- Stand der Daten: letztes nächtliches Backup. Was danach in der App geändert wurde, fehlt im Sheet und muss nachgetragen werden.
 
 ---
 

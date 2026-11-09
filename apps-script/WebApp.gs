@@ -1,9 +1,9 @@
 /******************************************************
  * Dienstplan – Schnittstelle für die Handy-App (PWA)
  *
- * Gehört ins SELBE Apps-Script-Projekt wie Dienstplan-Sync.gs.
+ * Gehört ins SELBE Apps-Script-Projekt wie Dienstplan-Sync.gs und Kalender.gs.
  * Die App liegt auf GitHub Pages und schickt ihre Anfragen hierher.
- * Die ganze Logik (Status, Folgetermine, Sync) bleibt hier.
+ * Termine und Kategorien liegen im Google Kalender (Kalender.gs).
  *
  * Schutz: Jede Anfrage braucht einen persönlichen Zugangscode.
  * Seit Version 2 (Spezifikation V2, Kapitel 2 + 3):
@@ -21,12 +21,10 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '5.2 (Tabelle, Serien)',
+  VERSION: '6.0 (aufgeräumt, nur Kalender)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
-
-  COL_GEAENDERT: 'Letzte Änderung',
 
   PROP_CODES_V2: 'ZUGANGSCODES_V2',  // neues Modell (Hash, Rolle …)
   PROP_CODES_LEGACY: 'ZUGANGSCODES', // altes Modell (Klartext), wird migriert und gelöscht
@@ -38,7 +36,7 @@ const WEBAPP = {
 const ROLES = {
   read: { rank: 1, label: 'Lesen', help: 'Termine nur ansehen' },
   write: { rank: 2, label: 'Schreiben', help: 'Termine anlegen, bearbeiten, absagen, verschieben' },
-  admin: { rank: 3, label: 'Admin', help: 'zusätzlich löschen, kompletter Sync, Verwaltung' },
+  admin: { rank: 3, label: 'Admin', help: 'zusätzlich löschen und Verwaltung' },
 };
 
 const MSG_FORBIDDEN = 'Dafür fehlen dir die Rechte.';
@@ -80,26 +78,16 @@ function userInfo_(user) {
 }
 
 function handleAction_(action, data, user) {
-  const calendarMode = isCalendarMode_();
-  checkTimezone_(calendarMode);
-  // V3: Termine und Kategorien direkt im Google Kalender (Kalender.gs)
-  if (calendarMode && V3_ACTIONS.includes(action)) return handleActionV3_(action, data, user);
+  checkTimezone_(true);
+  // Termine und Kategorien: direkt im Google Kalender (Kalender.gs)
+  if (V3_ACTIONS.includes(action)) return handleActionV3_(action, data, user);
   switch (action) {
-    case 'getData': return withAdminInfo_(getAppData_(user.name), user);
-    case 'saveEvent': return saveEvent_(data, user.name);
-    case 'setStatus': return setStatus_(data, user.name);
-    case 'syncAll': return syncAll_(user.name);
     // Verwaltung (V2, Kapitel 5.2) – nur Admin
-    case 'saveCategory': return withAdminInfo_(saveCategory_(data, user.name), user);
-    case 'deleteCategory': return withAdminInfo_(deleteCategory_(data, user.name), user);
     case 'listCodes': return listCodes_(user);
     case 'createCode': return createCodeApi_(data, user);
     case 'updateCode': return updateCode_(data, user);
     case 'deleteCode': return deleteCode_(data, user);
     case 'rotateTeamCode': return rotateTeamCode_(user);
-    case 'saveEvents':
-    case 'setStatusBulk':
-      throw new Error('Diese Aktion gibt es erst, wenn der Google Kalender die Datenquelle ist.');
     default: throw new Error(`Unbekannte Aktion: ${action}`);
   }
 }
@@ -718,118 +706,15 @@ function prettyHint_(hint) {
 
 
 /* =========================
-   VERWALTUNG: KATEGORIEN (V2, Kapitel 4.4 + 4.5)
+   KATEGORIEN – gemeinsame Regeln (gespeichert werden sie in Kalender.gs)
    ========================= */
 
 const RESERVED_COLORS = ['6', '8'];
 const MAX_CATEGORY_NAME = 40;
 
-/** Neu anlegen (ohne oldName) oder ändern/umbenennen. */
-function saveCategory_(data, userName) {
-  return withWebLock_(() => {
-    const ss = getSs_();
-    let catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
-    if (!catSheet) { setupCategories(); catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME); }
-
-    const name = (data.name || '').toString().trim();
-    const colorId = String(data.colorId || '').trim();
-    const oldName = (data.oldName || '').toString().trim();
-    if (!name) throw new Error('Bitte einen Namen eingeben.');
-    if (name.length > MAX_CATEGORY_NAME) throw new Error(`Der Name ist zu lang (höchstens ${MAX_CATEGORY_NAME} Zeichen).`);
-    if (RESERVED_COLORS.includes(colorId)) throw new Error('Mandarine und Graphit sind für „Verschoben“ und „Abgesagt“ reserviert.');
-    if (!CONFIG.CATEGORY_COLORS[colorId]) throw new Error('Bitte eine Farbe wählen.');
-
-    const rows = categoryRows_(catSheet);
-    const existing = oldName ? rows.find(r => r.name.toLowerCase() === oldName.toLowerCase()) : null;
-    if (oldName && !existing) throw new Error('Diese Kategorie gibt es nicht mehr. Bitte neu laden.');
-    if (rows.some(r => r !== existing && r.name.toLowerCase() === name.toLowerCase())) {
-      throw new Error('Diese Kategorie gibt es schon.');
-    }
-
-    let affected = 0;
-    if (existing) {
-      catSheet.getRange(existing.row, 1, 1, 2).setValues([[name, Number(colorId)]]);
-      if (existing.name !== name) affected = renameCategoryInData_(existing.name, name);
-      const used = categoryUsage_()[name.toLowerCase()] || 0;
-      affected = Math.max(affected, used);
-    } else {
-      const r = Math.max(catSheet.getLastRow(), 1) + 1;
-      catSheet.getRange(r, 1, 1, 2).setValues([[name, Number(colorId)]]);
-      if (!catSheet.getRange(r, 3).getFormula()) catSheet.getRange(r, 3).setFormula(categoryColorFormula_(ss, r));
-    }
-
-    let message = existing ? 'Gespeichert.' : 'Kategorie angelegt.';
-    if (existing && affected > 0) {
-      scheduleCalendarRefresh_();
-      message = 'Gespeichert. Der Kalender wird in den nächsten Minuten aktualisiert.';
-    }
-    return Object.assign({ message }, getAppData_(userName));
-  });
-}
-
-/** Löschen nur, wenn kein Termin (Status ≠ GELÖSCHT) die Kategorie nutzt. */
-function deleteCategory_(data, userName) {
-  return withWebLock_(() => {
-    const catSheet = getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
-    const name = (data.name || '').toString().trim();
-    const row = catSheet ? categoryRows_(catSheet).find(r => r.name.toLowerCase() === name.toLowerCase()) : null;
-    if (!row) throw new Error('Diese Kategorie gibt es nicht mehr. Bitte neu laden.');
-
-    const count = categoryUsage_()[name.toLowerCase()] || 0;
-    if (count > 0) {
-      throw new Error(`Wird von ${count} ${count === 1 ? 'Termin' : 'Terminen'} genutzt – erst die Termine umstellen.`);
-    }
-    catSheet.deleteRow(row.row);
-    return Object.assign({ message: `Kategorie „${row.name}“ gelöscht.` }, getAppData_(userName));
-  });
-}
-
-/** Zeilen im Blatt Categories: [{ row, name, colorId }] */
-function categoryRows_(catSheet) {
-  const last = catSheet.getLastRow();
-  if (last < 2) return [];
-  return catSheet.getRange(2, 1, last - 1, 2).getValues()
-    .map((v, i) => ({ row: i + 2, name: String(v[0] || '').trim(), colorId: String(v[1] || '').trim() }))
-    .filter(r => r.name);
-}
-
-/** Anzahl Termine je Kategorie (klein geschrieben), Status ≠ GELÖSCHT. */
-function categoryUsage_() {
-  const sheet = getSheet_();
-  const map = getHeaderMap_(sheet);
-  const catIdx = map[CONFIG.COL_CATEGORY.toLowerCase()];
-  const usage = {};
-  if (catIdx == null) return usage;
-  sheet.getDataRange().getValues().slice(1).forEach(row => {
-    const rec = rowToRecord_(row, map);
-    if (!rec.subject || !rec.category) return;
-    if (normalizeStatus_(rec.status) === CONFIG.STATUS.GELOESCHT) return;
-    const k = rec.category.toLowerCase();
-    usage[k] = (usage[k] || 0) + 1;
-  });
-  return usage;
-}
-
-/** Benennt die Kategorie in allen Zeilen von DataSheet um. Gibt die Anzahl geänderter Zeilen zurück. */
-function renameCategoryInData_(oldName, newName) {
-  const sheet = getSheet_();
-  const catIdx = getHeaderMap_(sheet)[CONFIG.COL_CATEGORY.toLowerCase()];
-  const lastRow = sheet.getLastRow();
-  if (catIdx == null || lastRow < 2) return 0;
-  const range = sheet.getRange(2, catIdx + 1, lastRow - 1, 1);
-  const vals = range.getValues();
-  let n = 0;
-  vals.forEach(v => {
-    if (String(v[0] || '').trim().toLowerCase() === oldName.toLowerCase()) { v[0] = newName; n++; }
-  });
-  if (n) range.setValues(vals);
-  return n;
-}
-
 /**
- * Plant einen einmaligen kompletten Sync in etwa einer Minute (V2, Kapitel 4.5),
- * damit Farbe und Zeile „Kategorie: …“ im Kalender nachgezogen werden, ohne dass
- * die Anfrage selbst hunderte Termine aktualisieren muss.
+ * Plant in etwa einer Minute das Nachziehen im Kalender (Kategorie umbenannt oder
+ * umgefärbt), damit die Anfrage selbst nicht hunderte Termine aktualisieren muss.
  */
 function scheduleCalendarRefresh_() {
   ScriptApp.getProjectTriggers().forEach(t => {
@@ -843,8 +728,7 @@ function runScheduledRefresh() {
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === 'runScheduledRefresh') ScriptApp.deleteTrigger(t);
   });
-  if (isCalendarMode_()) v3RefreshCalendar_(); // V3: betroffene Termine im Kalender neu schreiben
-  else syncSheetToCalendar();
+  v3RefreshCalendar_(); // betroffene Termine im Kalender neu schreiben
 }
 
 /* =========================
@@ -983,127 +867,13 @@ function rotateTeamCode_(user) {
 }
 
 /* =========================
-   AKTIONEN
-   ========================= */
-
-/** Neuer Termin (data.ref leer) oder Termin bearbeiten. */
-function saveEvent_(data, user) {
-  return mutate_(user, ({ sheet, map }) => {
-    const f = validateEventInput_(data);
-    const C = CONFIG;
-
-    if (f.category) {
-      ensureColumn_(sheet, C.COL_CATEGORY);
-      map = getHeaderMap_(sheet);
-    }
-
-    const cells = {
-      [C.COL_SUBJECT]: f.subject,
-      [C.COL_START_DATE]: isoToDate_(f.date),
-      [C.COL_END_DATE]: isoToDate_(f.endDate),
-      [C.COL_ALL_DAY]: f.allDay,
-      [C.COL_START_TIME]: f.allDay ? '' : f.start,
-      [C.COL_END_TIME]: f.allDay ? '' : f.end,
-      [C.COL_LOCATION]: f.location,
-      [C.COL_DESCRIPTION]: f.description,
-    };
-    if (map[C.COL_CATEGORY.toLowerCase()] != null) cells[C.COL_CATEGORY] = f.category;
-    if (f.recurrence !== undefined && (f.recurrence || map[C.COL_RECURRENCE.toLowerCase()] != null)) {
-      ensureColumn_(sheet, C.COL_RECURRENCE);
-      map = getHeaderMap_(sheet);
-      cells[C.COL_RECURRENCE] = f.recurrence.replace(/^RRULE:/, '');
-    }
-
-    let rowIndex;
-    if (data.ref) {
-      rowIndex = locateRow_(sheet, map, data.ref);
-      writeCells_(sheet, rowIndex, map, cells);
-    } else {
-      const row = new Array(sheet.getLastColumn()).fill('');
-      cells[C.COL_STATUS] = C.STATUS.AKTIV;
-      for (const [name, val] of Object.entries(cells)) {
-        const i = map[name.toLowerCase()];
-        if (i != null) row[i] = val;
-      }
-      rowIndex = appendRows_(sheet, [row]);
-    }
-
-    stamp_(sheet, map, rowIndex, user);
-    return syncAndReport_(sheet, map, rowIndex, data.ref ? 'Gespeichert.' : 'Termin angelegt.');
-  });
-}
-
-/** Status ändern: ABGESAGT, VERSCHOBEN (mit neuem Datum), AKTIV, LÖSCHEN */
-function setStatus_(data, user) {
-  return mutate_(user, ({ sheet, map }) => {
-    const S = CONFIG.STATUS;
-    const rowIndex = locateRow_(sheet, map, data.ref);
-    const row = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const rec = rowToRecord_(row, map);
-    const cells = { [CONFIG.COL_STATUS]: data.status };
-    let message;
-
-    switch (data.status) {
-      case S.ABGESAGT:
-        message = 'Termin abgesagt.';
-        break;
-
-      case S.VERSCHOBEN: {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(data.newDate || '')) throw new Error('Bitte ein neues Datum wählen.');
-        const [y, m, d] = data.newDate.split('-').map(Number);
-        const t = /^(\d{2}):(\d{2})$/.exec(data.newTime || '');
-        cells[CONFIG.COL_VERSCHOBEN_AUF] = t ? new Date(y, m - 1, d, +t[1], +t[2]) : new Date(y, m - 1, d);
-        message = rec.folgeterminId
-          ? 'Als verschoben markiert (neuer Termin war schon angelegt).'
-          : 'Termin verschoben – der neue Termin ist angelegt.';
-        break;
-      }
-
-      case S.AKTIV:
-        cells[CONFIG.COL_VERSCHOBEN_AUF] = '';
-        message = 'Termin ist wieder aktiv.';
-        break;
-
-      case S.LOESCHEN:
-        message = 'Termin gelöscht.';
-        break;
-
-      default:
-        throw new Error(`Unbekannter Status: ${data.status}`);
-    }
-
-    writeCells_(sheet, rowIndex, map, cells);
-    stamp_(sheet, map, rowIndex, user);
-    return syncAndReport_(sheet, map, rowIndex, message);
-  });
-}
-
-function syncAll_(user) {
-  return withWebLock_(() => {
-    const msg = syncSheetToCalendar_();
-    return Object.assign({ message: msg }, getAppData_(user));
-  });
-}
-
-/* =========================
    ABLAUF
    ========================= */
-
-function mutate_(user, fn) {
-  return withWebLock_(() => {
-    const sheet = getSheet_();
-    ensureRequiredColumns_();
-    ensureColumn_(sheet, WEBAPP.COL_GEAENDERT);
-    const map = getHeaderMap_(sheet);
-    const result = fn({ sheet, map });
-    return Object.assign(result, getAppData_(user));
-  });
-}
 
 function withWebLock_(fn) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
-    throw new Error('Gerade läuft schon ein Sync. Bitte in ein paar Sekunden nochmal versuchen.');
+    throw new Error('Gerade wird schon etwas gespeichert. Bitte in ein paar Sekunden nochmal versuchen.');
   }
   try {
     return fn();
@@ -1112,141 +882,9 @@ function withWebLock_(fn) {
   }
 }
 
-/** Überträgt nur diese eine Zeile (schnell) und baut die Rückmeldung. */
-function syncAndReport_(sheet, map, rowIndex, message) {
-  try {
-    syncOneRow_(sheet, map, rowIndex);
-    return { message, warning: false };
-  } catch (e) {
-    Logger.log(`FEHLER App Zeile ${rowIndex}: ${errMsg_(e)}`);
-    return {
-      message: `Im Sheet gespeichert, aber der Kalender konnte nicht aktualisiert werden: ${errMsg_(e)}`,
-      warning: true,
-    };
-  }
-}
-
-function syncOneRow_(sheet, map, rowIndex) {
-  const row = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const rec = rowToRecord_(row, map);
-
-  // nur den einen Termin laden statt den ganzen Kalender
-  const calEvents = new Map();
-  if (rec.eventId) {
-    try {
-      const ev = Calendar.Events.get(CONFIG.CALENDAR_ID, rec.eventId);
-      if (ev && ev.status !== 'cancelled') calEvents.set(ev.id, ev);
-    } catch (e) {
-      if (!isGoneError_(e)) throw e;
-    }
-  }
-
-  const ctx = {
-    sheet,
-    map,
-    categories: loadCategories_(),
-    calEvents,
-    stats: { created: 0, updated: 0, deleted: 0, followUps: 0, skipped: 0, errors: 0 },
-  };
-  syncRow_(ctx, rowIndex, row);
-  return ctx.stats;
-}
-
-/**
- * Findet die Zeile wieder, auch wenn das Sheet inzwischen sortiert wurde.
- * ref = { row, eventId, subject } aus der App.
- */
-function locateRow_(sheet, map, ref) {
-  if (!ref) throw new Error('Kein Termin angegeben.');
-  const lastRow = sheet.getLastRow();
-  const idIdx = map[CONFIG.COL_EVENT_ID.toLowerCase()];
-  const subjIdx = map[CONFIG.COL_SUBJECT.toLowerCase()];
-
-  if (ref.row >= 2 && ref.row <= lastRow) {
-    const vals = sheet.getRange(ref.row, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const id = (vals[idIdx] || '').toString().trim();
-    const subj = (vals[subjIdx] || '').toString().trim();
-    if (ref.eventId ? id === ref.eventId : subj === ref.subject) return ref.row;
-  }
-
-  if (ref.eventId && lastRow >= 2) {
-    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if ((ids[i][0] || '').toString().trim() === ref.eventId) return i + 2;
-    }
-  }
-
-  throw new Error('Termin nicht gefunden – die Liste wurde inzwischen geändert. Bitte neu laden.');
-}
-
-function stamp_(sheet, map, rowIndex, user) {
-  const when = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm');
-  writeCells_(sheet, rowIndex, map, { [WEBAPP.COL_GEAENDERT]: `${when} · ${user || 'App'}` });
-}
-
 /* =========================
-   DATEN FÜR DIE APP
+   EINGABEN PRÜFEN
    ========================= */
-
-function getAppData_(user) {
-  const sheet = getSheet_();
-  const map = ensureRequiredColumns_();
-  const values = sheet.getDataRange().getValues();
-  const changedIdx = map[WEBAPP.COL_GEAENDERT.toLowerCase()];
-  const categories = loadCategories_();
-  const usage = {}; // kategorie (klein) -> Anzahl Termine mit Status ≠ GELÖSCHT
-  const events = [];
-
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const rec = rowToRecord_(row, map);
-    if (!rec.subject) continue;
-
-    const status = normalizeStatus_(rec.status) || rec.status;
-    if (status === CONFIG.STATUS.GELOESCHT) continue;
-
-    const catKey = rec.category.toLowerCase();
-    if (catKey) usage[catKey] = (usage[catKey] || 0) + 1;
-
-    const sd = parseDate_(rec.startDate);
-    if (!sd) continue;
-    const ed = parseDate_(rec.endDate) || sd;
-    const v = parseVerschobenAuf_(rec.verschobenAuf);
-
-    events.push({
-      row: i + 1,
-      eventId: rec.eventId,
-      subject: rec.subject,
-      date: dateToIso_(sd),
-      endDate: dateToIso_(ed < sd ? sd : ed),
-      allDay: rec.allDay,
-      start: rec.allDay ? '' : timeToStr_(rec.startTime),
-      end: rec.allDay ? '' : timeToStr_(rec.endTime),
-      location: rec.location.trim(),
-      description: rec.description.trim(),
-      category: rec.category,
-      status,
-      recurring: !!rec.recurrence,
-      verschobenAuf: v ? formatVerschoben_(v, false) : '',
-      folgetermin: !!rec.folgeterminId,
-      synced: !!rec.eventId,
-      lastChange: changedIdx != null ? (row[changedIdx] || '').toString() : '',
-    });
-  }
-
-  events.sort((a, b) => (a.date + (a.start || '00:00')).localeCompare(b.date + (b.start || '00:00')));
-
-  return {
-    events,
-    categoryList: categories.list.map(c => ({
-      name: c.name,
-      colorId: c.colorId,
-      count: usage[c.name.toLowerCase()] || 0,
-    })),
-    today: dateToIso_(new Date()),
-    user,
-  };
-}
 
 function validateEventInput_(d) {
   const isoRe = /^\d{4}-\d{2}-\d{2}$/;

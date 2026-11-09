@@ -1,30 +1,22 @@
 /******************************************************
  * Dienstplan V3 – Google Kalender ist Master
- * (docs/PWA-Spezifikation-V3.md, Etappe 1 und 2)
+ * (docs/PWA-Spezifikation-V3.md)
  *
  * Gehört ins SELBE Apps-Script-Projekt wie WebApp.gs und Dienstplan-Sync.gs.
- *
- * Datenquelle umschalten (Script-Eigenschaft DATENQUELLE):
- *   sheet    = bisheriges Verhalten (Sheet ist Master, 15-Minuten-Sync)
- *   calendar = V3 (App liest und schreibt direkt im Kalender)
+ * Die App liest und schreibt Termine direkt im Kalender; private Zusatzfelder
+ * (extendedProperties.private) halten Status, Kategorie usw. Kategorien liegen
+ * in der Script-Eigenschaft KATEGORIEN_V3.
  *
  * Im Apps-Script-Editor (Funktionen ohne Parameter, direkt startbar):
- *   migrateToCalendarV3Probelauf()  nur Protokoll, ändert nichts
- *   migrateToCalendarV3()           Umstellung (bei Zeitlimit einfach erneut starten)
- *   setDataSourceCalendar()         auf Kalender umschalten (entfernt 15-Min-Trigger)
- *   setDataSourceSheet()            Rückweg (legt 15-Min-Trigger wieder an)
- *   showDataSource()                zeigt die aktuelle Datenquelle
- *
- * Backup (Etappe 2, Kapitel 5):
  *   enableNightlyBackup()           täglicher Trigger gegen 03:00 Uhr → backupToSheet
  *   disableNightlyBackup()          Trigger entfernen
  *   backupToSheet()                 Backup sofort (auch im Menü „Dienstplan“)
  *   restoreFromBackup()             Menü „Termin aus Backup wiederherstellen…“
+ *   aufraeumenEtappe3()             einmalig nach dem Update auf 6.0 (alte Trigger/Eigenschaften weg)
  ******************************************************/
 
 const V3 = {
   SCHEMA: '3',
-  PROP_SOURCE: 'DATENQUELLE',
   PROP_CATEGORIES: 'KATEGORIEN_V3',
   PROP_RENAMES: 'KATEGORIEN_V3_UMBENENNUNGEN', // alt (klein) → neu, bis der Kalender nachgezogen ist
 
@@ -43,10 +35,6 @@ const V3 = {
   BACKUP_PREFIX: 'Backup vom ',
   BACKUP_HANDLER: 'backupToSheet',
   PROTECT_DESC: 'Dienstplan – nur das Script schreibt hier (V3 Kapitel 5.2)',
-  // Aufbau von DataSheet im Sheet-Modus (Rückweg)
-  SHEET_HEADERS: ['Subject', 'Start Date', 'Start Time', 'End Date', 'End Time', 'All Day Event',
-    'Description', 'Location', 'Category', 'Status', 'Verschoben auf', 'Folgetermin-ID', 'EventId',
-    'LastSyncHash', 'Letzte Änderung', 'Recurrence'],
   BACKUP_HEADERS: ['Subject', 'Start Date', 'Start Time', 'End Date', 'End Time', 'All Day Event',
     'Description', 'Location', 'Category', 'Status', 'Verschoben auf', 'Recurrence', 'EventId',
     'Letzte Änderung', 'Folgetermin-ID'],
@@ -56,77 +44,46 @@ const V3 = {
 };
 
 /* =========================
-   DATENQUELLE
+   EINMALIG NACH DEM UPDATE AUF 6.0 (Etappe 3)
    ========================= */
 
-function dataSource_() {
-  return PropertiesService.getScriptProperties().getProperty(V3.PROP_SOURCE) === 'calendar' ? 'calendar' : 'sheet';
-}
-
-function isCalendarMode_() {
-  return dataSource_() === 'calendar';
-}
-
-/** Alte Sheet-Funktionen (Sync, Import, Cleanup) sind im Kalender-Modus gesperrt. */
-function assertSheetMode_(what) {
-  if (isCalendarMode_()) {
-    throw new Error(`${what} ist abgeschaltet: Der Google Kalender ist jetzt die Datenquelle (DATENQUELLE = calendar). ` +
-      'Termine bitte in der App bearbeiten. Rückweg: setDataSourceSheet().');
-  }
-}
-
 /**
- * Datenquelle umschalten. 'calendar' entfernt den 15-Minuten-Trigger,
- * 'sheet' legt ihn wieder an.
+ * Räumt Reste der Sheet-Zeit weg: alte Trigger (15-Minuten-Sync), Script-Eigenschaft
+ * DATENQUELLE und alte Umbenennungs-Reste. Legt das nächtliche Backup an, falls es fehlt.
+ * Mehrfaches Ausführen schadet nicht.
  */
-function setDataSource(mode) {
-  if (mode !== 'calendar' && mode !== 'sheet') {
-    throw new Error("Bitte setDataSource('calendar') oder setDataSource('sheet') – oder setDataSourceCalendar() / setDataSourceSheet().");
-  }
-  // Rückweg: Enthält DataSheet schon ein Backup, wird es vorher aus dem Kalender
-  // im alten Aufbau neu geschrieben – dann stehen auch alle Änderungen aus der Kalender-Zeit drin.
-  let rebuilt = false;
-  if (mode === 'sheet') {
-    const sheet = getSheet_();
-    if (v3IsBackupLayout_(sheet)) {
-      v3WriteSheetLayout_(sheet);
-      rebuilt = true;
+function aufraeumenEtappe3() {
+  const log = [];
+  const gone = ['syncSheetToCalendar', 'syncSheetToCalendar_'];
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (gone.includes(t.getHandlerFunction())) {
+      ScriptApp.deleteTrigger(t);
+      log.push(`Trigger entfernt: ${t.getHandlerFunction()}`);
     }
-    v3Unprotect_(sheet);
-    v3Unprotect_(getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME));
+  });
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DATENQUELLE') != null) {
+    props.deleteProperty('DATENQUELLE');
+    log.push('Script-Eigenschaft DATENQUELLE entfernt (der Kalender ist jetzt fest die Datenquelle).');
   }
-  PropertiesService.getScriptProperties().setProperty(V3.PROP_SOURCE, mode);
-  v3CacheClear_();
-  removeAutoSyncTriggers_();
-  let msg;
-  if (mode === 'calendar') {
+  if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === V3.BACKUP_HANDLER)) {
     enableNightlyBackup();
-    msg = 'Datenquelle: Google Kalender. Der 15-Minuten-Sync ist entfernt, das nächtliche Backup ist eingerichtet.';
-  } else {
-    removeBackupTriggers_();
-    ScriptApp.newTrigger('syncSheetToCalendar').timeBased().everyMinutes(15).create();
-    msg = 'Datenquelle: Sheet (bisheriges Verhalten). Der 15-Minuten-Sync ist wieder eingerichtet, das nächtliche Backup ist aus. ' +
-      (rebuilt
-        ? 'DataSheet wurde aus dem Kalender neu geschrieben und enthält den aktuellen Stand.'
-        : 'Achtung: Das Sheet zeigt den Stand vor der Kalender-Zeit; dort gemachte Änderungen stehen nicht im Sheet.');
+    log.push('Nächtliches Backup war nicht eingerichtet – jetzt eingerichtet.');
   }
-  Logger.log(msg);
-  return msg;
-}
-
-function setDataSourceCalendar() { return setDataSource('calendar'); }
-function setDataSourceSheet() { return setDataSource('sheet'); }
-function showDataSource() {
-  const msg = `Aktuelle Datenquelle: ${dataSource_()}`;
+  if (props.getProperty(V3.PROP_CATEGORIES) == null) {
+    log.push('ACHTUNG: KATEGORIEN_V3 fehlt – bitte die Kategorien in der App (Verwaltung) prüfen.');
+  }
+  v3CacheClear_();
+  const msg = log.length ? log.join('\n') : 'Nichts zu tun – alles schon aufgeräumt.';
   Logger.log(msg);
   return msg;
 }
 
 /* =========================
-   API (Datenquelle Kalender)
+   API
    ========================= */
 
-/** Aktionen, die im Kalender-Modus von dieser Datei beantwortet werden. */
+/** Aktionen der App, die diese Datei beantwortet. */
 const V3_ACTIONS = ['getData', 'saveEvent', 'setStatus', 'syncAll', 'saveCategory', 'deleteCategory', 'saveEvents', 'setStatusBulk'];
 
 function handleActionV3_(action, data, user) {
@@ -443,10 +400,10 @@ function v3SetStatusBulk_(data, userName) {
    KATEGORIEN (V3 Kapitel 3)
    ========================= */
 
-/** [{ name, colorId }] aus KATEGORIEN_V3; vor der Umstellung aus dem Blatt Categories. */
+/** [{ name, colorId }] aus der Script-Eigenschaft KATEGORIEN_V3. */
 function v3LoadCategoryList_() {
   const raw = PropertiesService.getScriptProperties().getProperty(V3.PROP_CATEGORIES);
-  if (raw == null) return loadCategories_().list.map(c => ({ name: c.name, colorId: Number(c.colorId) || c.colorId }));
+  if (raw == null) return [];
   try {
     const list = JSON.parse(raw);
     return Array.isArray(list) ? list : [];
@@ -459,7 +416,7 @@ function v3SaveCategoryList_(list) {
   PropertiesService.getScriptProperties().setProperty(V3.PROP_CATEGORIES, JSON.stringify(list));
 }
 
-/** Gleiche Struktur wie loadCategories_(): byName, byColor, canonical, names, list. */
+/** Kategorien für Termine: byName, byColor, canonical, names, list, renames. */
 function v3Categories_(list) {
   // renames: einmal lesen statt pro Termin (Script-Eigenschaften sind langsam)
   const result = { byName: {}, byColor: {}, canonical: {}, names: [], list: [], renames: v3Renames_() };
@@ -733,7 +690,7 @@ function v3Resource_(f, cats) {
   };
   const t = buildEventTimes_(rec);
   const moved = f.status === CONFIG.STATUS.VERSCHOBEN && f.movedToText ? parseVerschobenAuf_(f.movedToText) : null;
-  const res = buildEventResource_(rec, t.start, t.end, t.isAllDay, cats, f.status, moved, { noMarker: true });
+  const res = buildEventResource_(rec, t.start, t.end, t.isAllDay, cats, f.status, moved);
   const cat = categoryInfo_(rec, cats);
 
   const priv = {
@@ -893,108 +850,10 @@ function v3CacheClear_() {
 }
 
 /* =========================
-   UMSTELLUNG (V3 Kapitel 6)
+   ZEILE AUS DEM BACKUP → ZUSATZFELDER
    ========================= */
 
-/** Probelauf: nur Protokoll, keine Änderung. */
-function migrateToCalendarV3Probelauf() {
-  return migrateToCalendarV3(true);
-}
-
-/**
- * Einmalige Umstellung Sheet → Kalender.
- * 1. Kategorien → KATEGORIEN_V3
- * 2. Sheet-Zeilen mit EventId (Status ≠ GELÖSCHT): Zusatzfelder setzen, Titel/Beschreibung neu bauen, Marker entfernen
- * 3. Folgetermin-ID → movedTo / movedFrom
- * 4. Zeilen ohne EventId oder ohne Kalendertermin → nur Protokoll
- * Bricht nach 5 Minuten sauber ab; erneut starten überspringt schon umgestellte Termine (dp = 3).
- */
-function migrateToCalendarV3(dryRun) {
-  dryRun = dryRun === true;
-  const t0 = Date.now();
-  const S = CONFIG.STATUS;
-  const log = [];
-  const say = m => { log.push(m); Logger.log(m); };
-  checkTimezone_();
-  say(dryRun ? '=== PROBELAUF – es wird nichts geändert ===' : '=== UMSTELLUNG auf Kalender (V3) ===');
-
-  // 1. Kategorien
-  const props = PropertiesService.getScriptProperties();
-  const sheetCats = loadCategories_().list.map(c => ({ name: c.name, colorId: Number(c.colorId) || c.colorId }));
-  const existingRaw = props.getProperty(V3.PROP_CATEGORIES);
-  let catList = existingRaw ? JSON.parse(existingRaw) : [];
-  const missingCats = sheetCats.filter(c => !catList.some(x => x.name.toLowerCase() === c.name.toLowerCase()));
-  catList = catList.concat(missingCats);
-  say(`Kategorien: ${sheetCats.map(c => `${c.name} (${c.colorId})`).join(', ') || 'keine'}` +
-    (existingRaw ? ` – in KATEGORIEN_V3 schon vorhanden, ergänzt: ${missingCats.length}` : ''));
-  if (!dryRun) v3SaveCategoryList_(catList);
-  const cats = v3Categories_(catList);
-
-  // 2./3. Sheet-Zeilen
-  const sheet = getSheet_();
-  if (v3IsBackupLayout_(sheet)) {
-    throw new Error('DataSheet enthält schon ein Backup aus dem Kalender – die Umstellung ist bereits erfolgt.');
-  }
-  const map = getHeaderMap_(sheet);
-  const changedIdx = map[WEBAPP.COL_GEAENDERT.toLowerCase()];
-  const values = sheet.getDataRange().getValues();
-  const rows = [];
-  for (let i = 1; i < values.length; i++) {
-    const rec = rowToRecord_(values[i], map);
-    if (!rec.subject) continue;
-    const status = normalizeStatus_(rec.status) || S.AKTIV;
-    if (status === S.GELOESCHT || status === S.LOESCHEN) continue;
-    rows.push({ rowIndex: i + 1, rec, status, changed: changedIdx != null ? String(values[i][changedIdx] || '') : '' });
-  }
-  const isEventId = id => !!id && !/^Zeile\s/i.test(id);
-  const movedFrom = {}; // Folgetermin-ID → EventId des Ursprungs
-  rows.forEach(r => { if (isEventId(r.rec.folgeterminId) && r.rec.eventId) movedFrom[r.rec.folgeterminId] = r.rec.eventId; });
-
-  const stats = { converted: 0, already: 0, noId: [], missing: [], errors: [] };
-  const label = r => `Zeile ${r.rowIndex}: ${r.rec.subject} (${r.rec.startDate instanceof Date ? Utilities.formatDate(r.rec.startDate, CONFIG.TIMEZONE, 'dd.MM.yyyy') : r.rec.startDate})`;
-  let aborted = false;
-
-  for (const r of rows) {
-    if (Date.now() - t0 > V3.MAX_RUNTIME_MS) { aborted = true; break; }
-    if (!r.rec.eventId) { stats.noId.push(label(r)); continue; }
-    let ev;
-    try {
-      ev = v3GetEvent_(r.rec.eventId);
-    } catch (e) {
-      stats.errors.push(`${label(r)} – ${errMsg_(e)}`);
-      continue;
-    }
-    if (!ev) { stats.missing.push(label(r)); continue; }
-    const priv = (ev.extendedProperties && ev.extendedProperties.private) || {};
-    if (priv.dp === V3.SCHEMA) { stats.already++; continue; }
-
-    try {
-      const f = v3FieldsFromRow_(r, movedFrom, isEventId);
-      if (dryRun) {
-        const preview = v3Resource_(f, cats);
-        if (stats.converted < 15) say(`würde umstellen: ${label(r)} → „${preview.summary}“`);
-      } else {
-        v3Update_(ev, f, cats);
-      }
-      stats.converted++;
-    } catch (e) {
-      stats.errors.push(`${label(r)} – ${errMsg_(e)}`);
-    }
-  }
-
-  // 4./5. Protokoll
-  say(`${dryRun ? 'Würde umstellen' : 'Umgestellt'}: ${stats.converted}`);
-  say(`Schon umgestellt (übersprungen): ${stats.already}`);
-  say(`Ohne EventId (nichts angelegt): ${stats.noId.length}${stats.noId.length ? '\n  ' + stats.noId.join('\n  ') : ''}`);
-  say(`Termin fehlt im Kalender (nichts angelegt): ${stats.missing.length}${stats.missing.length ? '\n  ' + stats.missing.join('\n  ') : ''}`);
-  say(`Fehler: ${stats.errors.length}${stats.errors.length ? '\n  ' + stats.errors.join('\n  ') : ''}`);
-  if (aborted) say('⏱ Zeitlimit nach 5 Minuten – bitte migrateToCalendarV3() einfach erneut starten, es geht dort weiter.');
-  else if (!dryRun) say('Fertig. Nächster Schritt: setDataSourceCalendar().');
-  if (!dryRun) v3CacheClear_();
-  return log.join('\n');
-}
-
-/** Felder aus einer Sheet-Zeile (Umstellung). */
+/** Felder aus einer Backup-Zeile (Wiederherstellen). */
 function v3FieldsFromRow_(r, movedFromMap, isEventId) {
   const rec = r.rec;
   const sd = parseDate_(rec.startDate);
@@ -1031,12 +890,6 @@ function v3FieldsFromRow_(r, movedFromMap, isEventId) {
  * und die Kategorien nach Categories. Läuft nachts per Trigger (enableNightlyBackup).
  */
 function backupToSheet() {
-  if (!isCalendarMode_()) {
-    const msg = 'Kein Backup: Datenquelle ist das Sheet (DATENQUELLE = sheet). Dort ist DataSheet selbst der Master.';
-    Logger.log(msg);
-    toast_(msg, 10);
-    return msg;
-  }
   const now = new Date();
   const cats = v3Categories_();
   const rows = v3SortedFields_(v3ListEvents_({ forApp: true }), cats).map(x => v3BackupRow_(x.ev, x.f));
@@ -1117,25 +970,6 @@ function v3IsBackupLayout_(sheet) {
   return String(sheet.getRange(1, 1).getValue() || '').indexOf(V3.BACKUP_PREFIX) === 0;
 }
 
-/** Rückweg: DataSheet im alten Aufbau (Kopfzeile in Zeile 1) aus dem Kalender schreiben. */
-function v3WriteSheetLayout_(sheet) {
-  const cats = v3Categories_();
-  const rows = v3SortedFields_(v3ListEvents_({ forApp: true }), cats).map(({ ev, f }) => {
-    const b = v3BackupRow_(ev, f); // Subject … Folgetermin-ID in Backup-Reihenfolge
-    const by = {};
-    V3.BACKUP_HEADERS.forEach((h, i) => { by[h] = b[i]; });
-    by.LastSyncHash = ''; // leer → der 15-Minuten-Sync schreibt jeden Termin einmal im alten Format
-    return V3.SHEET_HEADERS.map(h => (by[h] == null ? '' : by[h]));
-  });
-  v3WriteTable_(sheet, [V3.SHEET_HEADERS].concat(rows), 1);
-  v3WriteCategorySheet_(getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME) || getSs_().insertSheet(CONFIG.CATEGORY_SHEET_NAME), cats.list);
-  try {
-    setupSheet(); // Status-Dropdown und Farben wie gewohnt
-  } catch (e) {
-    Logger.log('Sheet einrichten nach Rückweg: ' + errMsg_(e));
-  }
-}
-
 /* =========================
    SCHUTZ (V3 Kapitel 5.2)
    ========================= */
@@ -1157,17 +991,6 @@ function v3Protect_(sheet) {
   }
 }
 
-function v3Unprotect_(sheet) {
-  if (!sheet) return;
-  try {
-    sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET)
-      .filter(x => x.getDescription() === V3.PROTECT_DESC)
-      .forEach(x => x.remove());
-  } catch (e) {
-    Logger.log(`Schutz für „${sheet.getName()}“ nicht entfernt: ${errMsg_(e)}`);
-  }
-}
-
 /* =========================
    WIEDERHERSTELLEN (V3 Kapitel 5.4)
    ========================= */
@@ -1186,7 +1009,6 @@ function restoreFromBackup() {
 
 /** → { restored: bool, message, eventId } */
 function v3RestoreRow_(sheet, rowIndex) {
-  if (!isCalendarMode_()) throw new Error('Wiederherstellen geht nur, wenn der Google Kalender die Datenquelle ist.');
   const name = sheet.getName();
   if (name !== V3.DELETED_SHEET && name !== CONFIG.SHEET_NAME) {
     throw new Error(`Bitte zuerst im Blatt „${V3.DELETED_SHEET}“ oder „${CONFIG.SHEET_NAME}“ eine Terminzeile markieren.`);

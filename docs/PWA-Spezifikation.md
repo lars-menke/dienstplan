@@ -52,6 +52,7 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 | Löschen | sichert den Termin im Blatt „Gelöscht“ und entfernt ihn aus dem Kalender (nur Admin) |
 | Tabelle | direkt in der Zelle bearbeiten, Mehrfachauswahl, Sortieren, Filtern (Schreiben/Admin, ab 768 px) |
 | Kategorien verwalten | Name und Kalenderfarbe (nur Admin) |
+| Termine importieren | Excel, CSV oder ICS mit Vorschau und Dubletten-Prüfung (nur Admin) |
 | Zugangscodes verwalten | persönliche Codes mit Rolle, Mannschafts-Code (nur Admin) |
 | Backup und Wiederherstellen | nachts ins Sheet; gelöschte Termine per Menü zurückholen |
 
@@ -371,6 +372,16 @@ Einheitliches Sheet: Titel, ein erklärender Satz, [Aktion] (primär), [Zurück]
 - **Tastatur:** Pfeile wechseln die Zelle (Roving-Tabindex, `role="grid"`), Pos1/Ende, Strg+Pos1/Ende, Bild auf/ab, Enter oder F2 bearbeitet, Leertaste wählt die Zeile, Esc hebt die Auswahl auf.
 - Heute-Zeile in Akzent-Hintergrund, vergangene Termine gedämpft, Abgesagt durchgestrichen. Hell/Dunkel über die Tokens aus Kapitel 12.
 
+
+### 9.12 Termine importieren (`Import`, Admin)
+Weitere Aktionen → Verwaltung → **Termine importieren** öffnet eine Seite mit vier Schritten (Anzeige 1 Datei · 2 Spalten · 3 Vorschau · 4 Import):
+1. **Datei** wählen oder hineinziehen: `.xlsx`, `.xls`, `.csv`, `.ics`. Gelesen wird nur im Browser. Excel mit mehreren Blättern: Blatt wählen.
+2. **Spalten zuordnen:** Titel und Datum Pflicht; Beginn, Enddatum, Ende, Ganztägig, Ort, Beschreibung, Kategorie, Wiederholung optional. Übliche Namen (Subject/Betreff/Titel, Start Date/Datum, Beginn/Uhrzeit, Ort/Location …) werden automatisch zugeordnet, die Zuordnung wird gemerkt (`dienstplan.importMap`). Neben jeder Auswahl steht der Wert aus der ersten Zeile. Das bisherige Excel-Format und ICS-Dateien überspringen diesen Schritt.
+3. **Vorschau** als Tabelle: ✓ neu · ⚠ möglicherweise doppelt (gleiches Datum, gleicher Beginn bzw. beide ganztägig, ähnlicher Titel – gegen den Kalender und frühere Zeilen der Datei; standardmäßig abgewählt) · ✗ Fehler mit Grund (nicht wählbar). Knöpfe „Nur neue“, „Alle wählbaren“, „Keine“. Unbekannte Kategorien: je Kategorie „neu anlegen“ (Farbe wählbar, Vorschlag: noch freie Farbe) oder „ohne Kategorie“.
+4. **Import:** neue Kategorien anlegen, dann Termine in Paketen zu 50 über `saveEvents`, mit Fortschrittsbalken; Zusammenfassung „32 angelegt, 3 übersprungen, 1 Fehler“ mit Fehlerliste; [Weitere Datei] · [Fertig].
+
+Datumsformate `TT.MM.JJJJ` (auch `T.M.JJ`), `JJJJ-MM-TT`, Excel-Seriennummern, Datum mit Uhrzeit in einer Zelle; Zeiten `HH:MM`, `HH.MM`, „19 Uhr“, Excel-Bruchteile. Ohne Uhrzeit = ganztägig, ohne Ende = +60 Minuten. Excel liest SheetJS (`vendor/xlsx.full.min.js`, erst bei Bedarf geladen), CSV und ICS eigener Code. Beispieldatei: `docs/beispiele/import-beispiel.csv`.
+
 ---
 
 ## 10. Gesten
@@ -570,7 +581,7 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | Manifest | `manifest.webmanifest`: „Dienstplan AchtzehnZwo“ / „Dienstplan“, `standalone`, Theme `#c62828`, Icons 192/512 (`any`) und `icon-maskable-512.png` (`maskable`, mit mehr Rand für Android) |
 | App-Icon | Kalender mit Haken, weiß auf Feuerwehrrot `#c62828` – dasselbe Zeichen wie das Logo auf der Anmeldung; Dateien `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` (180 px), `favicon.png` (64 px) |
 | iOS | `apple-touch-icon.png` (180 px), `apple-mobile-web-app-capable` |
-| Service Worker | `sw.js`, Cache `dienstplan-v11` (inkl. `table.js` und Schriften in `fonts/`); erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
+| Service Worker | `sw.js`, Cache `dienstplan-v12` (inkl. `table.js`, `import.js` und Schriften in `fonts/`; der Excel-Leser in `vendor/` wird erst beim Import geladen); erst Netz, dann Speicher; API-Anfragen laufen durch; entfernt beim Aktivieren alte Caches (auch `dienstplan-beta-*`) |
 | Lokaler Speicher | `dienstplan.code` (Zugangscode), `dienstplan.data` (letzte Liste), `dienstplan.theme`, `dienstplan.view` (`list`/`week`/`table`), `dienstplan.swipeHintSeen` |
 | Aktualisierung | nach Änderungen an App-Dateien die Cache-Version in `sw.js` erhöhen |
 | Offline | App öffnet mit letztem Stand; Änderungen offline nicht möglich |
@@ -626,7 +637,7 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 3. **Akzentfarbe:** Feuerwehrrot (Hell) / Signalgelb (Dunkel) – bewusst so entschieden.
 4. **Mannschafts-Code verteilen:** Weg festlegen (z. B. WhatsApp-Community).
 5. Termine ohne Kategorie lassen sich in der Tabelle gesammelt zuordnen („Kategorie setzen…“).
-8. **Offen aus V3:** Import aus Excel/CSV/ICS (Etappe 5), automatische Bereitstellung per `clasp` (Etappe 6, optional) – siehe `PWA-Spezifikation-V3.md`.
+8. **Offen aus V3:** automatische Bereitstellung per `clasp` (Etappe 6, optional) – siehe `PWA-Spezifikation-V3.md`.
 6. Vorlage „Gruppendienst“ verweist auf die nicht vorhandene Kategorie „Ausbildung“.
 7. Keine Offline-Änderungen, keine Push-Mitteilungen.
 
@@ -639,7 +650,10 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | `index.html` | Grundgerüst, Theme-Script im `<head>` |
 | `app.css` | Styling, Design-Tokens Hell/Dunkel |
 | `app.js` | gesamte Logik (Anmeldung, API, Liste, Woche, Sheets, Gesten, Verwaltung) |
-| `table.js` | Tabellenansicht (V3 7.2), wird vor `app.js` geladen |
+| `table.js` | Tabellenansicht (Kapitel 9.11), wird vor `app.js` geladen |
+| `import.js` | Termine importieren (Kapitel 9.12), wird vor `app.js` geladen |
+| `vendor/` | SheetJS `xlsx.full.min.js` 0.20.3 (Apache-2.0, Lizenz und Herkunft in `vendor/README.md`), nur für den Excel-Import |
+| `docs/beispiele/` | Beispieldatei für den Import |
 | `icons.js` | Inline-SVG-Icons |
 | `config.js` | `API_URL`, `TEMPLATES` |
 | `manifest.webmanifest`, `*.png` | Name und App-Icon (Kalender mit Haken) |
@@ -670,3 +684,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 09.11.2026 | V3 Etappe 2: nächtliches Backup, Blattschutz, Blatt „Gelöscht“, Wiederherstellen, Menü „📅 Dienstplan“ (5.1) |
 | 09.11.2026 | V3 Etappe 4: Tabellenansicht, Wiederholungen im Formular (n-ter Wochentag, Ende), „Letzte Änderung“ immer gefüllt (5.2, Cache bis `dienstplan-v11`) |
 | 09.11.2026 | V3 Etappe 3: alter Sheet-Weg, 15-Minuten-Sync, Marker und `LastSyncHash` entfernt, Schalter `DATENQUELLE` entfällt; V3 in diese Spezifikation eingearbeitet (6.0) |
+| 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), Cache `dienstplan-v12` |

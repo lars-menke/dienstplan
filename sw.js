@@ -1,13 +1,15 @@
 // Service Worker: hält die App-Dateien vor, damit sie schnell startet
 // und auch ohne Netz öffnet. Termine kommen immer frisch vom Server.
 // Bei jeder Änderung an den App-Dateien die Versionsnummer erhöhen.
-const CACHE = 'dienstplan-v11';
+const CACHE = 'dienstplan-v12';
 const FILES = [
   './',
   'index.html',
   'app.css',
   'app.js',
   'table.js',
+  'import.js',
+  // vendor/xlsx.full.min.js (Excel-Leser, ~950 KB) bewusst NICHT vorab – wird erst beim Import geladen
   'icons.js',
   'config.js',
   'manifest.webmanifest',

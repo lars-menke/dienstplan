@@ -860,3 +860,62 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .chip.day { min-width: 46px; justify-content: center; padding: 0 10px; }
 .chip.day[aria-pressed="true"] { padding: 0 9px; }
 .rep-preview { font-size: 13px; color: var(--text-2); }
+
+/* ---------- Import (V3 Kapitel 7.3) ---------- */
+
+.page.wide .wrap { max-width: 1040px; }
+.imp-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.imp-steps li {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 4px; border-radius: 999px;
+  background: var(--chip); color: var(--muted); font-size: 13px; font-weight: 600;
+}
+.imp-steps li span {
+  width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface); color: var(--text-2); font-size: 12px;
+}
+.imp-steps li.is-current { background: var(--accent-soft); color: var(--accent-text); }
+.imp-steps li.is-current span { background: var(--accent); color: var(--accent-ink); }
+.imp-steps li.is-done { color: var(--text-2); }
+.imp-drop {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 36px 16px; border: 2px dashed var(--dashed); border-radius: 16px; background: var(--surface); color: var(--muted);
+  cursor: pointer;
+}
+.imp-drop b { color: var(--text); font-size: 17px; }
+.imp-drop.over, .imp-drop:hover { border-color: var(--accent); color: var(--accent-text); }
+.imp-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.imp-drop:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.imp-map { display: flex; flex-direction: column; gap: 8px; }
+.imp-map-row {
+  display: grid; grid-template-columns: minmax(110px, 160px) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center;
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+}
+.imp-map-row select, .imp-cat select {
+  height: 44px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text); font-size: 15px; min-width: 0;
+}
+.imp-map-row select:focus-visible, .imp-cat select:focus-visible { outline: 0; border: 2px solid var(--focus); padding: 0 9px; }
+.imp-sample { font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.imp-req { font-size: 11px; font-weight: 700; color: var(--accent-text); margin-left: 4px; }
+@media (max-width: 560px) {
+  .imp-map-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+  .imp-sample { grid-column: 2; }
+}
+.imp-cats .imp-cat { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; }
+.imp-cats .grow { display: flex; flex-direction: column; min-width: 120px; }
+.imp-cats small { color: var(--muted); font-size: 12px; }
+.imp-color { display: inline-flex; align-items: center; gap: 8px; }
+.imp-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.imp-tools .btn { min-height: 40px; font-size: 14px; }
+.imp-tbl { min-width: 860px; }
+.imp-tbl th { padding: 0 10px; height: 40px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); }
+.imp-tbl td.nowrap { white-space: nowrap; }
+.imp-tbl tr.is-error td { color: var(--muted); }
+.imp-reason { font-size: 13px; color: var(--muted); min-width: 180px; }
+.imp-tbl .tbl-sub { display: inline-flex; align-items: center; gap: 4px; }
+.imp-progress, .imp-done { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 40px 0; }
+.imp-done h2 { margin: 0; font-size: 20px; }
+.imp-done .ic { color: var(--ok); }
+.imp-bar { width: 100%; max-width: 420px; height: 10px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.imp-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .2s; }
+.imp-errors .opt { min-height: 56px; }

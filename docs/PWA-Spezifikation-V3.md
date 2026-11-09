@@ -170,6 +170,7 @@ Funktion **`migrateToCalendarV3()`** im Apps-Script-Editor, mit Probelauf `migra
 - **Schritt 4: Importieren** in Paketen zu 50 über `saveEvents`, mit Fortschrittsbalken. Am Ende eine Zusammenfassung „32 angelegt, 3 übersprungen, 1 Fehler“ mit Liste der Fehler.
 - Datumsformate: `TT.MM.JJJJ`, `JJJJ-MM-TT`, Excel-Seriennummern. Zeiten `HH:MM` oder Excel-Bruchteile. Fehlt die Endzeit: +60 Minuten (`DEFAULT_DURATION_MIN`).
 - Das Format aus dem bisherigen Excel-Import (Subject, Start Date, Start Time, End Date, End Time, All Day Event, Recurrence, Description, Location) muss ohne Zuordnung funktionieren.
+- *Umsetzung (`import.js`, Etappe 5):* SheetJS 0.20.3 unter `vendor/` (mit Lizenz und `vendor/README.md`), nur für Excel nachgeladen, nicht im Service-Worker-Vorab-Cache. CSV liest eigener Code (Trenner `;` `,` Tab, Anführungszeichen, UTF-8 oder Windows-1252), ICS ein eigener Parser (gefaltete Zeilen, `VALUE=DATE` mit exklusivem Ende, UTC → Berliner Zeit, `RRULE`, erste `CATEGORIES`; geänderte Einzeltermine einer Serie und abgesagte werden mit Grund übersprungen). Zusätzlich zuordenbar: Enddatum und Wiederholung. Bisheriges Excel-Format und ICS springen direkt zur Vorschau. Ohne Uhrzeit = ganztägig. Dubletten auch innerhalb der Datei. Unbekannte Kategorien: Vorschlag „neu anlegen“ mit noch freier Farbe; sie werden vor den Terminen über `saveCategory` angelegt. Beispiel: `docs/beispiele/import-beispiel.csv`.
 
 ---
 
@@ -189,7 +190,7 @@ Funktion **`migrateToCalendarV3()`** im Apps-Script-Editor, mit Probelauf `migra
 | 2 | Backup ins Sheet, Schutz, Blatt `Gelöscht`, Wiederherstellen (Kap. 5) | Rückfallebene steht |
 | 3 | Aufräumen: alten Sheet-Weg, 15-Min-Sync, Marker-Logik und `LastSyncHash` entfernen; Schalter `DATENQUELLE` entfällt | schlanker Code (umgesetzt in 6.0, siehe 9.1) |
 | 4 | Tabellenansicht (7.2) | Bearbeiten in der Liste |
-| 5 | Import (7.3) | Excel/CSV/ICS direkt in den Kalender |
+| 5 | Import (7.3) | Excel/CSV/ICS direkt in den Kalender (umgesetzt) |
 | 6 | clasp + GitHub Action (Kap. 8), optional | Backend-Code wird automatisch bereitgestellt |
 
 ### 9.1 Etappe 3 – umgesetzt (Schnittstelle 6.0)

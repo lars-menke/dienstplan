@@ -152,6 +152,7 @@ Funktion **`migrateToCalendarV3()`** im Apps-Script-Editor, mit Probelauf `migra
 - Sortieren nach Spalte, Filter nach Kategorie/Status, Suche wie in der Liste.
 - Tastatur: Pfeiltasten wechseln die Zelle, Enter bearbeitet.
 - Serientermine sind markiert. Datum und Zeit einer Serie sind in der Tabelle nicht bearbeitbar, sondern öffnen das normale Formular.
+- *Umsetzung (`table.js`):* zusätzlicher Filter **Zeitraum** „Ab heute“ (Standard; laufende Serien immer dabei) / „Alle“. Beginn ändern verschiebt das Ende mit (Dauer bleibt). Zeiten ganztägiger Termine öffnen das Formular. Klick auf Status oder „Letzte Änderung“ öffnet die Details. Löschen mehrerer Termine läuft nacheinander über `setStatus` LÖSCHEN (jeder landet im Blatt `Gelöscht`). Die Tabelle scrollt in sich, die Kopfzeile bleibt stehen. Unter 768 px oder bei Rolle Lesen springt die App zur Liste.
 
 ### 7.3 Import (Admin)
 - Neuer Punkt unter **Weitere Aktionen → Verwaltung → Termine importieren**.

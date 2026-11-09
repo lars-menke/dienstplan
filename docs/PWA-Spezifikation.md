@@ -282,7 +282,7 @@ Rote Vollfläche, unabhängig vom Theme. Logo (Kalender mit Haken), Titel als Lo
 
 ### 9.2 Terminliste (`Main`)
 - **Kopfzeile:** Logo, Titel als Logo-Schriftzug (Kicker „DIENSTPLAN“ 11 px, `--muted`, Sperrung .28em; „AchtzehnZwo“ 22 px in `--accent-text` – hell Feuerwehrrot, dunkel Signalgelb; bis 360 px Breite 19 px), darunter Sync-Stand (12 px) („✓ Im Kalender · Stand 08:31“ bzw. „Wird gespeichert…“ / „Offline · Stand …“), Knöpfe ↻ (neu laden, zeigt auch Ziehen-zum-Aktualisieren) und ⋯ (Weitere Aktionen).
-- Umschalter **Liste | Woche** (gemerkt in `dienstplan.view`) und Knopf **Heute**.
+- Umschalter **Liste | Woche | Tabelle** (gemerkt in `dienstplan.view`; Tabelle nur Schreiben/Admin ab 768 px, siehe V3 7.2) und Knopf **Heute**.
 - Suchfeld (Titel, Ort, Beschreibung, Kategorie; durchsucht auch vergangene Termine).
 - Gelber Offline-Streifen bei veraltetem Stand.
 - Liste: Textknopf **„Vergangene Termine“** (klappt vergangene Monate oberhalb auf), einmaliger Wisch-Hinweis (Schreiben/Admin), Gruppen **HEUTE** (Akzent-Etikett + Datum), **DIESE WOCHE**, **SPÄTER IM <MONAT>**, danach Monate.
@@ -593,6 +593,7 @@ Content-Type: text/plain;charset=utf-8
 | `index.html` | Grundgerüst, Theme-Script im `<head>` |
 | `app.css` | Styling, Design-Tokens Hell/Dunkel |
 | `app.js` | gesamte Logik (Anmeldung, API, Liste, Woche, Sheets, Gesten, Verwaltung) |
+| `table.js` | Tabellenansicht (V3 7.2), wird vor `app.js` geladen |
 | `icons.js` | Inline-SVG-Icons |
 | `config.js` | `API_URL`, `TEMPLATES` |
 | `manifest.webmanifest`, `*.png` | Name und App-Icon (Kalender mit Haken) |

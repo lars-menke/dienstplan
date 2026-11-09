@@ -293,7 +293,7 @@ function renderHeader() {
   } else {
     offlineEl.hidden = true;
   }
-  $('#btnNew').hidden = !can('write');
+  $('#btnNew').hidden = !can('write') || (state.view === 'table' && tbl.selected.size > 0);
 }
 
 /* ---------- Liste (V2, Kapitel 8.1) ---------- */
@@ -305,12 +305,19 @@ function matches(ev, q) {
 function render() {
   renderHeader();
   if (state.page) renderPage();
+  // Tabelle (V3 7.2): nur Schreiben/Admin und ab 768 px – sonst zurück zur Liste
+  if (state.view === 'table' && state.role && !tableAllowed()) state.view = 'list';
+  $('#btnTable').hidden = !tableAllowed();
   const week = state.view === 'week';
+  const table = state.view === 'table';
   $('#weekHead').hidden = !week;
   $('#searchBox').hidden = week;
   document.querySelectorAll('.seg [data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
   listEl.classList.toggle('week-list', week);
+  listEl.classList.toggle('table-list', table);
+  document.body.classList.toggle('is-table', table);
   if (week && state.loadedAt) return renderWeek();
+  if (table && state.loadedAt) return renderTable();
   if (!state.loadedAt) {
     if (state.loadError) {
       listEl.innerHTML = `<div class="empty">${icon('wifiOff', 32)}<p>${esc(state.loadError.message)}</p>
@@ -559,7 +566,7 @@ function renderWeek() {
 }
 
 function setView(view) {
-  state.view = view === 'week' ? 'week' : 'list';
+  state.view = view === 'week' || (view === 'table' && tableAllowed()) ? view : 'list';
   store.set(KEY_VIEW, state.view);
   render();
   window.scrollTo(0, 0);
@@ -781,7 +788,10 @@ async function ptrEnd() {
 
 // am ganzen App-Bereich, damit auch leere Listen gezogen werden können
 appEl.addEventListener('touchstart', e => {
-  if (e.touches.length === 1 && !e.target.closest('#dayStrip, .swipe-wrap.dragging')) ptrStart(e.touches[0].clientX, e.touches[0].clientY);
+  const tblScroll = e.target.closest('.tbl-scroll');
+  if (e.touches.length === 1 && !e.target.closest('#dayStrip, .swipe-wrap.dragging') && !(tblScroll && tblScroll.scrollTop > 0)) {
+    ptrStart(e.touches[0].clientX, e.touches[0].clientY);
+  }
   else ptr.active = false;
 }, { passive: true });
 appEl.addEventListener('touchmove', e => {
@@ -929,6 +939,7 @@ function restoreFocus() {
   setTimeout(() => {
     let target = el && document.contains(el) ? el : null;
     if (!target && key) target = listEl.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (!target && state.view === 'table' && tbl.focus && !state.page) target = tableCell(tbl.focus.id, tbl.focus.col);
     if (!target) target = state.page ? pageEl.querySelector('h1') : $('#btnMore');
     if (state.page && target && !pageEl.contains(target)) target = pageEl.querySelector('h1');
     if (target && (!appEl.hidden || state.page)) target.focus({ preventScroll: true });
@@ -1894,6 +1905,18 @@ $('#btnToday').onclick = () => {
   }
   state.q = '';
   $('#q').value = '';
+  if (state.view === 'table') {
+    render();
+    const t = todayIso();
+    const row = tableRows().find(ev => (ev.endDate || ev.date) >= t);
+    if (row) {
+      tbl.focus = { id: row.eventId, col: 'date' };
+      renderTable();
+      const td = tableCell(row.eventId, 'date');
+      if (td) { td.focus({ preventScroll: true }); td.scrollIntoView({ block: 'center' }); }
+    }
+    return;
+  }
   render();
   const target = $('#todayAnchor') || listEl.querySelector('[data-upcoming]');
   if (target) {
@@ -1936,8 +1959,10 @@ function cleanupBeta() {
 
 (function start() {
   applyTheme();
-  state.view = store.get(KEY_VIEW) === 'week' ? 'week' : 'list';
+  const savedView = store.get(KEY_VIEW);
+  state.view = savedView === 'week' || savedView === 'table' ? savedView : 'list';
   hydrateIcons(document);
+  tableInit();
 
   if (!API_URL || API_URL.startsWith('HIER')) {
     showLogin('Die App ist noch nicht eingerichtet: In config.js fehlt der Link zur Schnittstelle.');

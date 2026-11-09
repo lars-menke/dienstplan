@@ -82,7 +82,7 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 │  PWA                     │ ────────────────────────────────► │  Google Apps Script        │
 │  GitHub Pages            │ ◄──────────────────────────────── │  Web-App „Jeder“           │
 │  lars-menke.github.io/   │          JSON-Antwort             │  WebApp.gs (Schnittstelle) │
-│  dienstplan/             │                                   │  Dienstplan-Sync.gs (Logik)│
+│  dienstplan/             │                                   │  Kalender.gs (Logik)       │
 └──────────────────────────┘                                   └─────────────┬─────────────┘
    localStorage: Code, Liste,                                                │ liest/schreibt
    Darstellung, Ansicht                                                      ▼
@@ -102,7 +102,7 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 |---|---|---|
 | Oberfläche | HTML, CSS, Vanilla-JavaScript, kein Framework, kein Build | Repository `lars-menke/dienstplan`, GitHub Pages |
 | Schnittstelle | Apps Script `doPost`, ausgeführt als Besitzer | `apps-script/WebApp.gs` (Kopie im Repo) |
-| Logik | Status, Folgetermine, Farben, Kalender-Sync, Sheet-Menü | `apps-script/Dienstplan-Sync.gs` |
+| Logik | Termine im Google Kalender (Status, Folgetermine, Farben), Backup, Sheet-Menü | `apps-script/Kalender.gs`, `apps-script/Dienstplan-Sync.gs` |
 | Daten | Google Sheet, Blätter `DataSheet` und `Categories` | Google Drive |
 | Ausgabe | Google Kalender (Gruppenkalender) | Google Calendar |
 
@@ -514,9 +514,9 @@ Content-Type: text/plain;charset=utf-8
 
 ## 17. Sheet-Menü und Script-Funktionen
 
-**Sheet-Menü „🚒 Feuerwehr Kalender-Sync“:** Jetzt synchronisieren · Kalender-Termine in Liste übernehmen… · Sheet einrichten (Spalten, Dropdown, Farben) · 🏷️ Kategorien einrichten · 🏷️ Kategorien vorschlagen und eintragen… · Kalender-IDs anzeigen · ⏱ Automatischen Sync ein/aus (alle 15 Min.) · 🔑 Zugangscode erstellen… (mit Rolle) · 🔑 Zugangscodes verwalten… (Übersicht, Rolle, sperren, entsperren, gesperrte löschen) · 📱 Link der App-Schnittstelle anzeigen · 🧹 Cleanup (Nicht-Sheet-Termine ab/vor Datum) · 🔥 Hard Delete.
+**Sheet-Menü „📅 Dienstplan“** (seit V3, Etappe 3): Termin aus Backup wiederherstellen… · Backup jetzt erstellen · 🔑 Zugangscode erstellen… (mit Rolle) · 🔑 Zugangscodes verwalten… (Übersicht, Rolle, sperren, entsperren, gesperrte löschen) · 📱 Link der App-Schnittstelle anzeigen. Der frühere Sheet-Sync (Sync, Import, Cleanup, Hard Delete, Sheet einrichten) ist entfernt – Termine liegen im Google Kalender (siehe `PWA-Spezifikation-V3.md`).
 
-**Einmalige Editor-Funktionen:** `migrateCodesV2()` (alte Klartext-Codes → Hash-Modell, Rolle „write“; erledigt) · `setAdmin(name)` (Code zum Admin machen).
+**Editor-Funktionen:** `enableNightlyBackup()` / `disableNightlyBackup()` · `backupToSheet()` · `aufraeumenEtappe3()` (einmalig nach dem Update auf 6.0) · `migrateCodesV2()` (alte Klartext-Codes → Hash-Modell, Rolle „write“; erledigt) · `setAdmin(name)` (Code zum Admin machen).
 
 ---
 
@@ -600,7 +600,8 @@ Content-Type: text/plain;charset=utf-8
 | `sw.js` | Service Worker |
 | `fonts/` | Titel-Schriften (Permanent Marker, Barlow Condensed 600) mit Lizenzen |
 | `beta/` | nur noch Weiterleitung + Aufräum-Service-Worker der früheren Testversion |
-| `apps-script/Dienstplan-Sync.gs` | Sync, Status-Logik, Kategorien, Sheet-Menü |
+| `apps-script/Dienstplan-Sync.gs` | Konfiguration, Sheet-Menü, Hilfsfunktionen (Titel/Beschreibung bauen, Datum) |
+| `apps-script/Kalender.gs` | Termine und Kategorien im Google Kalender, Backup, Wiederherstellen |
 | `apps-script/WebApp.gs` | Schnittstelle, Rollen, Zugangscodes |
 | `docs/PWA-Spezifikation.md` | dieses Dokument |
 | `docs/design/` | Design-Artboards (Referenz) |

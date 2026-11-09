@@ -1127,9 +1127,10 @@ function v3Protect_(sheet) {
     const type = SpreadsheetApp.ProtectionType.SHEET;
     const p = sheet.getProtections(type).find(x => x.getDescription() === V3.PROTECT_DESC) ||
       sheet.protect().setDescription(V3.PROTECT_DESC);
-    const me = (Session.getEffectiveUser().getEmail() || '').toLowerCase();
-    const others = p.getEditors().filter(u => (u.getEmail() || '').toLowerCase() !== me);
-    if (others.length) p.removeEditors(others);
+    // Eigentümer und ausführender Nutzer lassen sich nicht entfernen (Google) – so bleiben nur sie.
+    // Ohne Session.getEffectiveUser(), das bräuchte eine zusätzliche Berechtigung (userinfo.email).
+    const editors = p.getEditors();
+    if (editors.length) p.removeEditors(editors);
     if (p.canDomainEdit()) p.setDomainEdit(false);
   } catch (e) {
     Logger.log(`Schutz für „${sheet.getName()}“ nicht gesetzt: ${errMsg_(e)}`);

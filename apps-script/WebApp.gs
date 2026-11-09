@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '6.0 (aufgeräumt, nur Kalender)',
+  VERSION: '6.1 (automatisch bereitgestellt)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',

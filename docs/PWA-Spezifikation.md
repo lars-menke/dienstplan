@@ -628,7 +628,8 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 
 ## 22. Bereitstellung & Betrieb
 - **App:** Änderungen ins Repository `lars-menke/dienstplan` (Branch `main`); GitHub Pages veröffentlicht nach 1–2 Minuten. Cache-Version in `sw.js` erhöhen.
-- **Schnittstelle:** die drei Dateien `apps-script/WebApp.gs`, `Kalender.gs`, `Dienstplan-Sync.gs` ins Apps-Script-Projekt kopieren (Advanced Service „Google Calendar API“ v3 muss aktiv sein), speichern, dann **Bereitstellungen verwalten → bestehende Bereitstellung → Stift → Version „Neue Version“ → Bereitstellen** (sonst ändert sich die `/exec`-URL bzw. die alte Version bleibt aktiv). Kontrolle: `GET` auf die `/exec`-Adresse zeigt `version`.
+- **Schnittstelle (automatisch, seit Etappe 6):** Jeder Push auf `main` mit Änderungen unter `apps-script/` startet die GitHub Action `.github/workflows/apps-script.yml`: `clasp push --force` (Code + `appsscript.json` ins bestehende Projekt) und `clasp deploy --deploymentId …` (neue Version, bestehende Bereitstellung – die `/exec`-Adresse bleibt). Secrets: `CLASPRC_JSON`, `SCRIPT_ID`, optional `DEPLOYMENT_ID`. **Im Apps-Script-Editor nichts mehr direkt ändern** – der nächste Lauf überschreibt es. Erhöhe bei Änderungen `WEBAPP.VERSION`, dann zeigt der Workflow am Ende die neue Version.
+- **Schnittstelle (von Hand, Rückfall):** die drei Dateien `apps-script/WebApp.gs`, `Kalender.gs`, `Dienstplan-Sync.gs` ins Apps-Script-Projekt kopieren (Advanced Service „Google Calendar API“ v3 muss aktiv sein), speichern, dann **Bereitstellungen verwalten → bestehende Bereitstellung → Stift → Version „Neue Version“ → Bereitstellen** (sonst ändert sich die `/exec`-URL bzw. die alte Version bleibt aktiv). Kontrolle: `GET` auf die `/exec`-Adresse zeigt `version`.
 - **Reihenfolge bei inkompatiblen Änderungen:** erst die App veröffentlichen, dann die Schnittstelle bereitstellen.
 
 ---
@@ -639,7 +640,6 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 3. **Akzentfarbe:** Feuerwehrrot (Hell) / Signalgelb (Dunkel) – bewusst so entschieden.
 4. **Mannschafts-Code verteilen:** Weg festlegen (z. B. WhatsApp-Community).
 5. Termine ohne Kategorie lassen sich in der Tabelle gesammelt zuordnen („Kategorie setzen…“).
-8. **Offen aus V3:** automatische Bereitstellung per `clasp` (Etappe 6, optional) – siehe `PWA-Spezifikation-V3.md`.
 6. Vorlage „Gruppendienst“ verweist auf die nicht vorhandene Kategorie „Ausbildung“.
 7. Keine Offline-Änderungen, keine Push-Mitteilungen.
 
@@ -665,6 +665,9 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | `apps-script/Dienstplan-Sync.gs` | Konfiguration, Sheet-Menü, Hilfsfunktionen (Titel/Beschreibung bauen, Datum) |
 | `apps-script/Kalender.gs` | Termine und Kategorien im Google Kalender, Backup, Wiederherstellen |
 | `apps-script/WebApp.gs` | Schnittstelle, Rollen, Zugangscodes |
+| `apps-script/appsscript.json` | Manifest (Zeitzone, Calendar v3, Web-App-Einstellungen) |
+| `.claspignore`, `.clasp.json.example` | clasp-Einstellungen; `.clasp.json` selbst steht nicht im Repo |
+| `.github/workflows/apps-script.yml` | stellt das Backend bei Änderungen automatisch bereit |
 | `docs/PWA-Spezifikation.md` | dieses Dokument |
 | `docs/PWA-Spezifikation-V3.md` | Herleitung V3, Umstellung, Etappen, Notfall-Rückweg |
 | `docs/design/` | Design-Artboards (Referenz) |
@@ -687,3 +690,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 09.11.2026 | V3 Etappe 4: Tabellenansicht, Wiederholungen im Formular (n-ter Wochentag, Ende), „Letzte Änderung“ immer gefüllt (5.2, Cache bis `dienstplan-v11`) |
 | 09.11.2026 | V3 Etappe 3: alter Sheet-Weg, 15-Minuten-Sync, Marker und `LastSyncHash` entfernt, Schalter `DATENQUELLE` entfällt; V3 in diese Spezifikation eingearbeitet (6.0) |
 | 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), dazu Export aus der Tabelle und Vorlage (nur Admin), Cache `dienstplan-v12` |
+| 09.11.2026 | V3 Etappe 6: Backend als clasp-Projekt, GitHub Action stellt bei Änderungen automatisch bereit (Schnittstelle 6.1) |

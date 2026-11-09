@@ -103,6 +103,7 @@ Gleiches Anfrageformat wie bisher (`POST`, `text/plain`, `{ action, code, data }
 - Zeitgesteuerter Trigger täglich gegen **03:00 Uhr** (`backupToSheet`).
 - Blatt **`DataSheet`**: Zeile 1 ist der Hinweis `Backup vom 09.11.2026, 03:00 – Änderungen hier haben keine Wirkung. Termine bitte in der App bearbeiten.` Ab Zeile 2 folgen Kopfzeile und alle Termine, in den bekannten Spalten (Subject, Start Date, Start Time, End Date, End Time, All Day Event, Description, Location, Category, Status, Verschoben auf, Recurrence, EventId, Letzte Änderung) plus `Folgetermin-ID`. Die Spalte `LastSyncHash` entfällt.
 - Blatt **`Categories`**: aktuelle Kategorien (Name, ColorId, Farbname).
+  *Umsetzung:* Spaltenköpfe bleiben `Category · ColorId · Farbe` wie bisher, damit der Rückweg (`setDataSourceSheet`) das Blatt weiter lesen kann. Der Rückweg schreibt `DataSheet` vorher aus dem Kalender im alten Aufbau neu (Kopfzeile in Zeile 1).
 - **Keine** Zugangscodes im Sheet.
 - Ältere Stände über „Datei → Versionsverlauf“, keine eigenen Kopien.
 

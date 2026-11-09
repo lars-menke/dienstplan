@@ -99,7 +99,10 @@ const V3_ACTIONS = ['getData', 'saveEvent', 'setStatus', 'syncAll', 'saveCategor
 
 function handleActionV3_(action, data, user) {
   switch (action) {
-    case 'getData': return withAdminInfo_(v3GetAppData_(user.name), user);
+    case 'getData':
+      // fresh: von Hand aktualisiert (Herunterziehen/Knopf) → direkt aus dem Kalender lesen
+      if (data && data.fresh) v3CacheClear_();
+      return withAdminInfo_(v3GetAppData_(user.name), user);
     case 'saveEvent': return v3SaveEvent_(data, user.name);
     case 'setStatus': return v3SetStatus_(data, user.name);
     case 'syncAll': return Object.assign({ message: V3.MSG_SYNC_OBSOLETE }, v3GetAppData_(user.name));
@@ -115,6 +118,8 @@ function handleActionV3_(action, data, user) {
 
 function v3GetAppData_(userName) {
   let data = v3CacheGet_();
+  // nach dem Speichern wird der Zwischenspeicher nur angepasst – spätestens nach 5 Minuten neu lesen
+  if (data && (!data.listedAt || Date.now() - data.listedAt > V3.CACHE_SECONDS * 1000)) data = null;
   if (!data) {
     const cats = v3Categories_();
     const events = v3ListEvents_().map(ev => v3ToApp_(ev, v3Fields_(ev, cats)));

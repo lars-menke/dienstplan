@@ -156,7 +156,8 @@ function applyData(d) {
   }));
 }
 
-async function load() {
+/** fresh: von Hand aktualisiert – das Backend liest dann direkt aus dem Kalender. */
+async function load(fresh) {
   if (state.busy) return;
   const reload = $('#btnReload');
   reload.classList.add('spinning');
@@ -165,7 +166,7 @@ async function load() {
     listEl.innerHTML = `<div class="loading" role="status"><span class="spin"></span>Lade Termine…</div>`;
   }
   try {
-    applyData(await api('getData'));
+    applyData(await api('getData', fresh === true ? { fresh: true } : {}));
   } catch (e) {
     if (e.auth) return logout(e.message);
     state.loadError = e;
@@ -772,7 +773,7 @@ async function ptrEnd() {
   if (!go) return;
   ptr.loading = true;
   reloadBtn.classList.add('ready');      // bleibt eingefärbt, solange geladen wird
-  await load();                           // dreht den Knopf (.spinning)
+  await load(true);                       // dreht den Knopf (.spinning)
   reloadBtn.classList.remove('ready');
   ptr.loading = false;
   toast(state.loadError ? state.loadError.message : 'Aktualisiert.', !!state.loadError);
@@ -1789,7 +1790,7 @@ listEl.addEventListener('click', e => {
 });
 $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
 $('#btnNew').onclick = () => openForm(null);
-$('#btnReload').onclick = load;
+$('#btnReload').onclick = () => load(true);
 $('#btnMore').onclick = openMore;
 document.querySelectorAll('.seg [data-view]').forEach(b => (b.onclick = () => setView(b.dataset.view)));
 $('#weekPrev').onclick = () => shiftWeek(-1);

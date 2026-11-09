@@ -32,7 +32,7 @@ const V3 = {
   CACHE_SECONDS: 300,          // so alt darf die Liste werden, dann werden die Änderungen nachgeholt
   CACHE_KEEP_SECONDS: 6 * 3600, // so lange bleibt die Liste gespeichert (Höchstwert von Google)
   FULL_READ_MS: 6 * 3600 * 1000, // spätestens dann wird wieder komplett gelesen
-  LIST_FIELDS: 'nextPageToken,items(id,status,summary,description,location,start,end,colorId,recurrence,recurringEventId,eventType,extendedProperties)',
+  LIST_FIELDS: 'nextPageToken,items(id,status,updated,summary,description,location,start,end,colorId,recurrence,recurringEventId,eventType,extendedProperties)',
   CACHE_CHUNK_CHARS: 40000, // < 90 KB auch bei Umlauten (UTF-8)
 
   MAX_RUNTIME_MS: 5 * 60 * 1000,
@@ -295,6 +295,7 @@ function v3SaveOne_(id, input, cats, userName) {
     end: input.end,
     changed: v3Stamp_(userName),
   };
+  if (input.recurrence !== undefined) values.recurrence = input.recurrence;
   if (id) {
     const ev = v3GetEvent_(id);
     if (!ev) throw new Error('Termin nicht gefunden – er wurde inzwischen gelöscht. Bitte neu laden.');
@@ -695,8 +696,25 @@ function v3ToApp_(ev, f) {
     verschobenAuf: v ? formatVerschoben_(v, false) : '',
     folgetermin: !!f.movedTo,
     synced: true,
-    lastChange: f.changed,
+    recurrence: f.recurrence || '',
+    lastChange: v3LastChange_(ev, f),
   };
+}
+
+/**
+ * „Letzte Änderung“: Stempel aus der App („09.11.2026 10:40 · Lars“). Fehlt er oder wurde
+ * der Termin danach direkt im Google Kalender geändert, die Zeit von Google mit Hinweis.
+ */
+function v3LastChange_(ev, f) {
+  const stamp = f.changed || '';
+  const upd = ev.updated ? Date.parse(ev.updated) : NaN;
+  if (isNaN(upd)) return stamp;
+  const when = Utilities.formatDate(new Date(upd), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm');
+  const priv = (ev.extendedProperties && ev.extendedProperties.private) || {};
+  const sync = priv.sync ? Date.parse(priv.sync) : NaN;
+  if (!isNaN(sync) && upd - sync < 3 * 60 * 1000) return stamp || when; // letzte Änderung kam vom Script
+  if (isNaN(sync) && f.managed) return stamp || when;                     // umgestellt, seitdem unbekannt
+  return `${when} · direkt im Kalender`;
 }
 
 /** Sichtbarer Termin (wie bisher über buildEventResource_, ohne Marker) + private Zusatzfelder. */
@@ -728,6 +746,8 @@ function v3Resource_(f, cats) {
     movedToText: f.movedToText || '',
     movedFrom: f.movedFrom || '',
     changed: f.changed || '',
+    // Zeitpunkt, zu dem das Script zuletzt geschrieben hat – spätere Änderungen kamen direkt aus Google
+    sync: new Date().toISOString(),
   };
   // Google erlaubt höchstens 1024 Zeichen pro Wert; lange Beschreibungen werden aus dem sichtbaren Text rekonstruiert
   Object.keys(priv).forEach(k => {

@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '5.1.1 (Backup ins Sheet)',
+  VERSION: '5.2 (Tabelle, Serien)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -1008,6 +1008,11 @@ function saveEvent_(data, user) {
       [C.COL_DESCRIPTION]: f.description,
     };
     if (map[C.COL_CATEGORY.toLowerCase()] != null) cells[C.COL_CATEGORY] = f.category;
+    if (f.recurrence !== undefined && (f.recurrence || map[C.COL_RECURRENCE.toLowerCase()] != null)) {
+      ensureColumn_(sheet, C.COL_RECURRENCE);
+      map = getHeaderMap_(sheet);
+      cells[C.COL_RECURRENCE] = f.recurrence.replace(/^RRULE:/, '');
+    }
 
     let rowIndex;
     if (data.ref) {
@@ -1265,6 +1270,16 @@ function validateEventInput_(d) {
     if (end && endDate === date && end <= start) throw new Error('Das Ende liegt vor dem Beginn.');
   }
 
+  // Wiederholung (RRULE). Fehlt das Feld, bleibt eine vorhandene Wiederholung unverändert; '' entfernt sie.
+  let recurrence;
+  if (d.recurrence !== undefined && d.recurrence !== null) {
+    const r = d.recurrence.toString().trim().replace(/^RRULE:/i, '').toUpperCase();
+    if (r && (r.length > 300 || !/^FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)(;[A-Z]+=[-+,0-9A-Z]+)*$/.test(r))) {
+      throw new Error('Die Wiederholung ist ungültig.');
+    }
+    recurrence = r ? `RRULE:${r}` : '';
+  }
+
   return {
     subject,
     date,
@@ -1275,6 +1290,7 @@ function validateEventInput_(d) {
     location: (d.location || '').toString().trim(),
     description: (d.description || '').toString().trim(),
     category: (d.category || '').toString().trim(),
+    recurrence,
   };
 }
 

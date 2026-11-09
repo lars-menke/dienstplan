@@ -415,7 +415,7 @@ body { overflow-x: hidden; }
   -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; text-align: left; line-height: 44px;
 }
 .field input::-webkit-date-and-time-value { text-align: left; }
-.field input, .field textarea {
+.field input, .field textarea, .field select {
   min-height: 46px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--surface-2); color: var(--text); font-size: 16px; font-weight: 400; width: 100%;
 }
@@ -751,7 +751,7 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
   overflow: auto; overscroll-behavior: contain;
   background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
 }
-.tbl { width: 100%; min-width: 980px; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.tbl { width: 100%; min-width: 1100px; border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .tbl th {
   position: sticky; top: 0; z-index: 1; background: var(--surface-2);
   border-bottom: 1px solid var(--line-strong); text-align: left; padding: 0; white-space: nowrap;
@@ -768,6 +768,8 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
   color: var(--text); overflow-wrap: break-word;
 }
 .tbl td.c-category, .tbl td.c-status, .tbl td.c-changed, .tbl td.c-date { white-space: nowrap; }
+.field .opt-note { font-weight: 400; color: var(--muted); }
+.field select { -webkit-appearance: auto; appearance: auto; }
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl td:focus, .tbl td:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 0; }
 .tbl td.editable { cursor: text; }
@@ -783,6 +785,10 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .c-start, .c-end { width: 84px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .c-subject { min-width: 220px; }
 .c-location { width: 160px; }
+.c-repeat { width: 180px; }
+.tbl td.c-repeat { white-space: nowrap; }
+.tbl-repeat { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.tbl-repeat .ic { color: var(--muted); }
 .c-category { width: 150px; }
 .c-status { width: 140px; }
 .c-changed { width: 170px; }
@@ -833,3 +839,5 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .tbl-bar .btn { min-height: 44px; padding: 0 14px; font-size: 14px; }
 .tbl-bar .btn.danger-outline { border: 1px solid var(--danger); color: var(--danger); background: transparent; }
 .tbl-bar .btn.text { color: var(--text-2); }
+.field select:focus-visible { outline: 0; border: 2px solid var(--focus); padding: 0 11px; }
+@media (max-width: 480px) { .rep-grid { grid-template-columns: minmax(0, 1fr); } }

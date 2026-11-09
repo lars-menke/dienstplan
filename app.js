@@ -267,6 +267,98 @@ function movedFrom(ev) {
   return m ? `${pad(m[1])}.${pad(m[2])}.` : '';
 }
 
+/* ---------- Wiederholung (RRULE) ---------- */
+
+const RR_DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const WD_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+/** n-ter Wochentag im Monat; 5 → „letzter“ (-1) */
+function nthWeekday(iso) {
+  const d = toDate(iso);
+  const n = Math.ceil(d.getDate() / 7);
+  return { n: n >= 5 ? -1 : n, wd: d.getDay() };
+}
+
+/** RRULE → { preset, until, count, raw } – preset: none | weekly | biweekly | monthlyDay | monthlyDate | yearly | custom */
+function parseRule(rule, iso) {
+  const raw = String(rule || '').replace(/^RRULE:/i, '').trim().toUpperCase();
+  if (!raw) return { preset: 'none', until: '', count: 0, raw: '' };
+  const p = {};
+  raw.split(';').forEach(kv => { const [k, v] = kv.split('='); if (k) p[k] = v || ''; });
+  let until = '';
+  const u = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z)?$/.exec(p.UNTIL || '');
+  if (u) until = u[4] ? toIso(new Date(Date.UTC(+u[1], +u[2] - 1, +u[3], +u[4], +u[5], +u[6]))) : `${u[1]}-${u[2]}-${u[3]}`;
+  const out = { preset: 'custom', until, count: +p.COUNT || 0, raw };
+  const extra = Object.keys(p).filter(k => !['FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY', 'UNTIL', 'WKST'].includes(k));
+  if (extra.length || !iso) return out;
+  const interval = +p.INTERVAL || 1;
+  const d = toDate(iso);
+  if (p.FREQ === 'WEEKLY' && (!p.BYDAY || p.BYDAY === RR_DAYS[d.getDay()]) && !p.BYMONTHDAY) {
+    if (interval === 1) out.preset = 'weekly';
+    if (interval === 2) out.preset = 'biweekly';
+  } else if (p.FREQ === 'MONTHLY' && interval === 1) {
+    const nw = nthWeekday(iso);
+    const m = /^(-?\d)([A-Z]{2})$/.exec(p.BYDAY || '');
+    if (m && !p.BYMONTHDAY && +m[1] === nw.n && m[2] === RR_DAYS[nw.wd]) out.preset = 'monthlyDay';
+    else if (!p.BYDAY && (!p.BYMONTHDAY || +p.BYMONTHDAY === d.getDate())) out.preset = 'monthlyDate';
+  } else if (p.FREQ === 'YEARLY' && interval === 1 && !p.BYDAY && !p.BYMONTHDAY) {
+    out.preset = 'yearly';
+  }
+  return out;
+}
+
+/** Auswahl im Formular → RRULE (leer = keine Wiederholung) */
+function buildRule(preset, iso, until, allDay, raw) {
+  if (preset === 'none') return '';
+  if (preset === 'custom') return raw ? `RRULE:${raw}` : '';
+  const nw = nthWeekday(iso);
+  const base = {
+    weekly: 'FREQ=WEEKLY',
+    biweekly: 'FREQ=WEEKLY;INTERVAL=2',
+    monthlyDay: `FREQ=MONTHLY;BYDAY=${nw.n}${RR_DAYS[nw.wd]}`,
+    monthlyDate: 'FREQ=MONTHLY',
+    yearly: 'FREQ=YEARLY',
+  }[preset];
+  if (!base) return '';
+  // UNTIL: ganztägig als Datum, sonst Ende des Tages (UTC, schließt den letzten Tag sicher ein)
+  const u = until ? `;UNTIL=${until.replace(/-/g, '')}${allDay ? '' : 'T235959Z'}` : '';
+  return `RRULE:${base}${u}`;
+}
+
+function presetLabel(preset, iso) {
+  const nw = nthWeekday(iso);
+  const d = toDate(iso);
+  return {
+    none: 'Keine',
+    weekly: `Jede Woche (${WD_LONG[d.getDay()]})`,
+    biweekly: `Alle 2 Wochen (${WD_LONG[d.getDay()]})`,
+    monthlyDay: `Jeden Monat am ${nw.n === -1 ? 'letzten' : `${nw.n}.`} ${WD_LONG[nw.wd]}`,
+    monthlyDate: `Jeden Monat am ${d.getDate()}.`,
+    yearly: `Jedes Jahr am ${d.getDate()}. ${d.toLocaleDateString('de-DE', { month: 'long' })}`,
+    custom: 'Eigene Regel (aus Google Kalender)',
+  }[preset];
+}
+
+/** Kurzer Text: „jede Woche bis 31.12.2026“ */
+function repeatText(ev) {
+  if (!ev.recurrence) return ev.recurring ? 'Serie' : '';
+  const r = parseRule(ev.recurrence, ev.date);
+  const nw = nthWeekday(ev.date);
+  const d = toDate(ev.date);
+  let t = {
+    weekly: 'jede Woche', biweekly: 'alle 2 Wochen',
+    monthlyDay: `monatl. am ${nw.n === -1 ? 'letzten' : `${nw.n}.`} ${WD_LONG[nw.wd].slice(0, 2)}`,
+    monthlyDate: `monatl. am ${d.getDate()}.`, yearly: 'jedes Jahr',
+  }[r.preset];
+  if (!t) {
+    const f = (/FREQ=(\w+)/.exec(r.raw) || [])[1];
+    t = { DAILY: 'täglich', WEEKLY: 'wöchentlich', MONTHLY: 'monatlich', YEARLY: 'jährlich' }[f] || 'Serie';
+  }
+  if (r.until) t += ` bis ${fmt(r.until, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  if (r.count) t += ` · ${r.count}-mal`;
+  return t;
+}
+
 const minutes = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
 const hhmm = mins => `${pad(Math.floor(((mins % 1440) + 1440) % 1440 / 60))}:${pad(((mins % 60) + 60) % 60)}`;
 
@@ -974,7 +1066,7 @@ function openDetail(ev) {
       ev.folgetermin ? ' Der neue Termin ist angelegt.' : ''}</span></div>`);
   }
   if (ev.status === S.ABGESAGT) notes.push(`<div class="note">${icon('ban', 18)}<span>Abgesagt. Der Termin bleibt im Kalender sichtbar.</span></div>`);
-  if (ev.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Serientermin – Änderungen gelten für die ganze Serie.</span></div>`);
+  if (ev.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Serientermin${repeatText(ev) && repeatText(ev) !== 'Serie' ? ` (${esc(repeatText(ev))})` : ''} – Änderungen gelten für die ganze Serie.</span></div>`);
 
   const last = ev.lastChange ? `Letzte Änderung: ${esc(ev.lastChange)}` : '';
   let actions;
@@ -1151,7 +1243,7 @@ function openMove(ev) {
 
 /* ---------- Neuer Termin / Bearbeiten (V2, Kapitel 8.5, ohne Vorlagen) ---------- */
 
-function openForm(ev) {
+function openForm(ev, opts) {
   const isNew = !ev;
   // in der Wochenansicht startet ein neuer Termin am gewählten Tag
   const today = state.view === 'week' && state.selDay ? state.selDay : todayIso();
@@ -1160,6 +1252,10 @@ function openForm(ev) {
     allDay: false, location: '', description: '', category: '',
   };
   let category = e.category || '';
+  const rule0 = parseRule(e.recurrence || '', e.date);
+  const repOptions = date => ['none', 'weekly', 'biweekly', 'monthlyDay', 'monthlyDate', 'yearly']
+    .concat(rule0.preset === 'custom' ? ['custom'] : [])
+    .map(p => `<option value="${p}">${esc(presetLabel(p, date || e.date))}</option>`).join('');
 
   const chips = () => {
     const opts = categoryOptions();
@@ -1189,6 +1285,11 @@ function openForm(ev) {
         <label class="field" data-time>Beginn<input type="time" id="fStart" value="${esc(e.start)}"></label>
         <label class="field" data-time>Ende<input type="time" id="fStop" value="${esc(e.end)}"></label>
       </div>
+      <div class="grid2 rep-grid">
+        <label class="field">Wiederholung<select id="fRep">${repOptions(e.date)}</select></label>
+        <label class="field" id="fUntilWrap"><span>Letzter Termin <small class="opt-note">(optional)</small></span><input type="date" id="fUntil" value="${esc(rule0.until)}"></label>
+      </div>
+      <p class="small-note" id="fRepNote"${rule0.preset === 'custom' ? '' : ' hidden'}>Diese Wiederholung wurde im Google Kalender eingestellt (${esc(repeatText(e))}). Sie bleibt so, solange du hier nichts anderes wählst.</p>
       <label class="field">Ort<input id="fLoc" value="${esc(e.location)}" placeholder="z. B. Feuerwehrhaus"></label>
       <div id="fCats">${chips()}</div>
       <label class="field">Beschreibung<textarea id="fDesc" rows="2" placeholder="z. B. PA mitbringen">${esc(e.description)}</textarea></label>
@@ -1197,7 +1298,7 @@ function openForm(ev) {
     <div class="sheet-foot">
       <button class="btn small" type="button" id="fBack" style="flex:1">Abbrechen</button>
       <button class="btn primary" type="button" id="fOk" style="flex:2">${isNew ? 'Anlegen' : 'Speichern'}</button>
-    </div>`);
+    </div>`, opts && opts.focus ? { focus: opts.focus } : {});
 
   const toggleTimes = () => sheetEl.querySelectorAll('[data-time]').forEach(el => (el.hidden = $('#fAll').checked));
 
@@ -1221,12 +1322,23 @@ function openForm(ev) {
   $('#fAll').onchange = toggleTimes;
   toggleTimes();
 
+  const repEl = $('#fRep');
+  repEl.value = rule0.preset;
+  const toggleUntil = () => {
+    $('#fUntilWrap').hidden = repEl.value === 'none' || repEl.value === 'custom';
+    $('#fRepNote').hidden = repEl.value !== 'custom';
+  };
+  repEl.onchange = toggleUntil;
+  toggleUntil();
+
   let prevDate = $('#fDate').value;
   $('#fDate').onchange = () => {
     const d = $('#fDate').value;
     const end = $('#fEnd').value;
     if (!end || end === prevDate || end < d) $('#fEnd').value = d;
     prevDate = d;
+    // Texte der Wiederholung hängen vom Datum ab („am 3. Freitag“)
+    if (d) { const v = repEl.value; repEl.innerHTML = repOptions(d); repEl.value = v; }
   };
 
   $('#fCats').addEventListener('click', ev2 => {
@@ -1250,7 +1362,12 @@ function openForm(ev) {
       location: $('#fLoc').value.trim(),
       description: $('#fDesc').value.trim(),
       category,
+      recurrence: buildRule(repEl.value, $('#fDate').value, repEl.value === 'none' ? '' : $('#fUntil').value, $('#fAll').checked, rule0.raw),
     };
+    if (repEl.value !== 'none' && repEl.value !== 'custom' && $('#fUntil').value && $('#fUntil').value < data.date) {
+      $('#fUntil').focus();
+      return toast('Der letzte Termin der Serie liegt vor dem ersten.', true);
+    }
     if (!data.subject) { $('#fSub').focus(); return toast('Bitte einen Titel eingeben.', true); }
     if (!data.date) { $('#fDate').focus(); return toast('Bitte ein Datum wählen.', true); }
     if (!data.allDay && !data.start) { $('#fStart').focus(); return toast('Bitte eine Beginn-Uhrzeit eingeben.', true); }

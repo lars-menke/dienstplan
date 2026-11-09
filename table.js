@@ -13,6 +13,7 @@ const TABLE_COLS = [
   { key: 'start', label: 'Beginn', sort: true, edit: 'time' },
   { key: 'end', label: 'Ende', sort: true, edit: 'time' },
   { key: 'subject', label: 'Titel', sort: true, edit: 'text' },
+  { key: 'repeat', label: 'Serie', sort: true, edit: 'form' }, // öffnet das Formular bei „Wiederholung“
   { key: 'location', label: 'Ort', sort: true, edit: 'text' },
   { key: 'category', label: 'Kategorie', sort: true, edit: 'select' },
   { key: 'status', label: 'Status', sort: true },
@@ -59,6 +60,7 @@ function tableSortValue(ev, col) {
     case 'end': return ev.allDay ? '' : ev.end || '';
     case 'status': return STATUS_ORDER[ev.status] != null ? STATUS_ORDER[ev.status] : 9;
     case 'changed': return changedKey(ev.lastChange);
+    case 'repeat': return repeatText(ev).toLocaleLowerCase('de');
     default: return String(ev[col] || '').toLocaleLowerCase('de');
   }
 }
@@ -192,7 +194,7 @@ function tableRowHtml(ev) {
     const attrs = `data-id="${esc(id)}" data-col="${c.key}" tabindex="${focused ? 0 : -1}" role="gridcell"` +
       (err ? ` aria-invalid="true" title="${esc(err)}"` : '');
     const classes = [`c-${c.key}`];
-    if (c.edit && tableCanInline(ev, c.key)) classes.push('editable');
+    if (c.edit && (c.edit === 'form' || tableCanInline(ev, c.key))) classes.push('editable');
     if (err) classes.push('has-error');
     if (editing) return `<td class="${classes.join(' ')} editing" ${attrs}>${tableEditorHtml(ev, c)}</td>`;
     return `<td class="${classes.join(' ')}" ${attrs}>${tableCellHtml(ev, c.key, isSel, saving)}${
@@ -217,10 +219,15 @@ function tableCellHtml(ev, col, isSel, saving) {
     case 'end':
       return ev.allDay ? '' : esc(ev.end || '');
     case 'subject':
-      return `<span class="tbl-title">${esc(ev.subject)}</span>${ev.recurring
-        ? `<span class="tbl-series" title="Serientermin" aria-label="Serientermin">${icon('series', 14, 2.5)}</span>` : ''}`;
+      return `<span class="tbl-title">${esc(ev.subject)}</span>`;
     case 'location':
       return esc(ev.location || '');
+    case 'repeat': {
+      const t = repeatText(ev);
+      if (!t) return '<span class="tbl-muted">–</span>';
+      const [main, until] = t.split(' bis ');
+      return `<span class="tbl-repeat">${icon('series', 14, 2.5)}${esc(main)}</span>${until ? `<span class="tbl-sub">bis ${esc(until)}</span>` : ''}`;
+    }
     case 'category': {
       if (!ev.category) return '<span class="tbl-muted">–</span>';
       const color = categoryColor(ev.category);
@@ -279,6 +286,7 @@ function tableCell(id, col) {
 
 /** Datum/Zeit einer Serie und Zeiten ganztägiger Termine gehen nur übers Formular. */
 function tableCanInline(ev, col) {
+  if (col === 'repeat') return false;
   if ((col === 'date' || col === 'start' || col === 'end') && ev.recurring) return false;
   if ((col === 'start' || col === 'end') && ev.allDay) return false;
   return true;
@@ -288,7 +296,7 @@ function tableStartEdit(id, col) {
   const ev = tableEvent(id);
   const c = TABLE_COLS.find(x => x.key === col);
   if (!ev || !c || !c.edit || tbl.saving.has(id) || tbl.bulkBusy) return;
-  if (!tableCanInline(ev, col)) { openForm(ev); return; }
+  if (!tableCanInline(ev, col)) { openForm(ev, col === 'repeat' ? { focus: '#fRep' } : undefined); return; }
   delete tbl.errors[`${id}|${col}`];
   tbl.focus = { id, col };
   tbl.edit = { id, col };

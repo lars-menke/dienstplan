@@ -1,6 +1,6 @@
 /******************************************************
  * Dienstplan V3 – Google Kalender ist Master
- * (docs/PWA-Spezifikation-V3.md, Etappe 1)
+ * (docs/PWA-Spezifikation-V3.md, Etappe 1 und 2)
  *
  * Gehört ins SELBE Apps-Script-Projekt wie WebApp.gs und Dienstplan-Sync.gs.
  *
@@ -14,6 +14,12 @@
  *   setDataSourceCalendar()         auf Kalender umschalten (entfernt 15-Min-Trigger)
  *   setDataSourceSheet()            Rückweg (legt 15-Min-Trigger wieder an)
  *   showDataSource()                zeigt die aktuelle Datenquelle
+ *
+ * Backup (Etappe 2, Kapitel 5):
+ *   enableNightlyBackup()           täglicher Trigger gegen 03:00 Uhr → backupToSheet
+ *   disableNightlyBackup()          Trigger entfernen
+ *   backupToSheet()                 Backup sofort (auch im Menü „Dienstplan“)
+ *   restoreFromBackup()             Menü „Termin aus Backup wiederherstellen…“
  ******************************************************/
 
 const V3 = {
@@ -34,6 +40,13 @@ const V3 = {
   MAX_PRIVATE_VALUE: 1024,
 
   DELETED_SHEET: 'Gelöscht',
+  BACKUP_PREFIX: 'Backup vom ',
+  BACKUP_HANDLER: 'backupToSheet',
+  PROTECT_DESC: 'Dienstplan – nur das Script schreibt hier (V3 Kapitel 5.2)',
+  // Aufbau von DataSheet im Sheet-Modus (Rückweg)
+  SHEET_HEADERS: ['Subject', 'Start Date', 'Start Time', 'End Date', 'End Time', 'All Day Event',
+    'Description', 'Location', 'Category', 'Status', 'Verschoben auf', 'Folgetermin-ID', 'EventId',
+    'LastSyncHash', 'Letzte Änderung', 'Recurrence'],
   BACKUP_HEADERS: ['Subject', 'Start Date', 'Start Time', 'End Date', 'End Time', 'All Day Event',
     'Description', 'Location', 'Category', 'Status', 'Verschoben auf', 'Recurrence', 'EventId',
     'Letzte Änderung', 'Folgetermin-ID'],
@@ -70,16 +83,32 @@ function setDataSource(mode) {
   if (mode !== 'calendar' && mode !== 'sheet') {
     throw new Error("Bitte setDataSource('calendar') oder setDataSource('sheet') – oder setDataSourceCalendar() / setDataSourceSheet().");
   }
+  // Rückweg: Enthält DataSheet schon ein Backup, wird es vorher aus dem Kalender
+  // im alten Aufbau neu geschrieben – dann stehen auch alle Änderungen aus der Kalender-Zeit drin.
+  let rebuilt = false;
+  if (mode === 'sheet') {
+    const sheet = getSheet_();
+    if (v3IsBackupLayout_(sheet)) {
+      v3WriteSheetLayout_(sheet);
+      rebuilt = true;
+    }
+    v3Unprotect_(sheet);
+    v3Unprotect_(getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME));
+  }
   PropertiesService.getScriptProperties().setProperty(V3.PROP_SOURCE, mode);
   v3CacheClear_();
   removeAutoSyncTriggers_();
   let msg;
   if (mode === 'calendar') {
-    msg = 'Datenquelle: Google Kalender. Der 15-Minuten-Sync ist entfernt.';
+    enableNightlyBackup();
+    msg = 'Datenquelle: Google Kalender. Der 15-Minuten-Sync ist entfernt, das nächtliche Backup ist eingerichtet.';
   } else {
+    removeBackupTriggers_();
     ScriptApp.newTrigger('syncSheetToCalendar').timeBased().everyMinutes(15).create();
-    msg = 'Datenquelle: Sheet (bisheriges Verhalten). Der 15-Minuten-Sync ist wieder eingerichtet. ' +
-      'Achtung: Das Sheet zeigt den Stand vor der Kalender-Zeit; dort gemachte Änderungen stehen nicht im Sheet.';
+    msg = 'Datenquelle: Sheet (bisheriges Verhalten). Der 15-Minuten-Sync ist wieder eingerichtet, das nächtliche Backup ist aus. ' +
+      (rebuilt
+        ? 'DataSheet wurde aus dem Kalender neu geschrieben und enthält den aktuellen Stand.'
+        : 'Achtung: Das Sheet zeigt den Stand vor der Kalender-Zeit; dort gemachte Änderungen stehen nicht im Sheet.');
   }
   Logger.log(msg);
   return msg;
@@ -799,6 +828,7 @@ function v3WriteDeleted_(ev, f, userName) {
     sheet = ss.insertSheet(V3.DELETED_SHEET);
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
     sheet.setFrozenRows(1);
+    v3Protect_(sheet);
   }
   sheet.appendRow(v3BackupRow_(ev, f).concat([
     Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm'),
@@ -882,6 +912,9 @@ function migrateToCalendarV3(dryRun) {
 
   // 2./3. Sheet-Zeilen
   const sheet = getSheet_();
+  if (v3IsBackupLayout_(sheet)) {
+    throw new Error('DataSheet enthält schon ein Backup aus dem Kalender – die Umstellung ist bereits erfolgt.');
+  }
   const map = getHeaderMap_(sheet);
   const changedIdx = map[WEBAPP.COL_GEAENDERT.toLowerCase()];
   const values = sheet.getDataRange().getValues();
@@ -967,4 +1000,239 @@ function v3FieldsFromRow_(r, movedFromMap, isEventId) {
     movedFrom: movedFromMap[rec.eventId] || '',
     changed: r.changed,
   };
+}
+
+/* =========================
+   BACKUP INS SHEET (V3 Kapitel 5.1)
+   ========================= */
+
+/**
+ * Schreibt alle Termine aus dem Kalender nach DataSheet (Zeile 1 Hinweis, Zeile 2 Kopfzeile)
+ * und die Kategorien nach Categories. Läuft nachts per Trigger (enableNightlyBackup).
+ */
+function backupToSheet() {
+  if (!isCalendarMode_()) {
+    const msg = 'Kein Backup: Datenquelle ist das Sheet (DATENQUELLE = sheet). Dort ist DataSheet selbst der Master.';
+    Logger.log(msg);
+    toast_(msg, 10);
+    return msg;
+  }
+  const now = new Date();
+  const cats = v3Categories_();
+  const rows = v3SortedFields_(v3ListEvents_({ forApp: true }), cats).map(x => v3BackupRow_(x.ev, x.f));
+  const hint = `${V3.BACKUP_PREFIX}${Utilities.formatDate(now, CONFIG.TIMEZONE, 'dd.MM.yyyy, HH:mm')} – ` +
+    'Änderungen hier haben keine Wirkung. Termine bitte in der App bearbeiten.';
+
+  const ss = getSs_();
+  const sheet = getSheet_();
+  v3WriteTable_(sheet, [[hint], V3.BACKUP_HEADERS].concat(rows), 2);
+  sheet.getRange(1, 1).setFontStyle('italic');
+
+  let catSheet = ss.getSheetByName(CONFIG.CATEGORY_SHEET_NAME);
+  if (!catSheet) catSheet = ss.insertSheet(CONFIG.CATEGORY_SHEET_NAME);
+  v3WriteCategorySheet_(catSheet, cats.list);
+
+  [sheet, catSheet, ss.getSheetByName(V3.DELETED_SHEET)].forEach(v3Protect_);
+
+  const msg = `Backup fertig: ${rows.length} Termine, ${cats.list.length} Kategorien.`;
+  Logger.log(msg);
+  toast_(msg, 8);
+  return msg;
+}
+
+/** Täglicher Trigger gegen 03:00 Uhr (Google startet ihn irgendwann zwischen 3 und 4 Uhr). */
+function enableNightlyBackup() {
+  removeBackupTriggers_();
+  ScriptApp.newTrigger(V3.BACKUP_HANDLER).timeBased().atHour(3).everyDays(1).inTimezone(CONFIG.TIMEZONE).create();
+  const msg = 'Nächtliches Backup eingerichtet (täglich gegen 03:00 Uhr).';
+  Logger.log(msg);
+  return msg;
+}
+
+function disableNightlyBackup() {
+  removeBackupTriggers_();
+  const msg = 'Nächtliches Backup ausgeschaltet.';
+  Logger.log(msg);
+  return msg;
+}
+
+function removeBackupTriggers_() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === V3.BACKUP_HANDLER)
+    .forEach(t => ScriptApp.deleteTrigger(t));
+}
+
+/** Termine mit ihren Feldern, nach Datum und Beginn sortiert. */
+function v3SortedFields_(events, cats) {
+  return events
+    .map(ev => ({ ev, f: v3Fields_(ev, cats) }))
+    .sort((a, b) => (a.f.date + (a.f.start || '00:00')).localeCompare(b.f.date + (b.f.start || '00:00')));
+}
+
+/** Blatt komplett ersetzen: Inhalt, Formate, Dropdowns und bedingte Formatierung weg, dann schreiben. */
+function v3WriteTable_(sheet, rows, frozenRows) {
+  const width = Math.max.apply(null, rows.map(r => r.length));
+  const data = rows.map(r => r.concat(new Array(width - r.length).fill('')));
+  sheet.clear();
+  sheet.clearConditionalFormatRules();
+  sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearDataValidations();
+  if (sheet.getMaxRows() < data.length) sheet.insertRowsAfter(sheet.getMaxRows(), data.length - sheet.getMaxRows());
+  if (sheet.getMaxColumns() < width) sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
+  sheet.getRange(1, 1, data.length, width).setValues(data);
+  sheet.setFrozenRows(frozenRows);
+  sheet.getRange(frozenRows, 1, 1, width).setFontWeight('bold');
+}
+
+/** Blatt Categories: gleicher Aufbau wie bisher (Category · ColorId · Farbe), damit der Rückweg passt. */
+function v3WriteCategorySheet_(catSheet, list) {
+  const rows = list.map(c => [c.name, Number(c.colorId) || c.colorId, CONFIG.CATEGORY_COLORS[c.colorId] || '']);
+  v3WriteTable_(catSheet, [['Category', 'ColorId', 'Farbe']].concat(rows), 1);
+  if (rows.length) {
+    catSheet.getRange(2, 3, rows.length, 1).setBackgrounds(list.map(c => [CONFIG.CATEGORY_COLOR_HEX[c.colorId] || null]));
+  }
+}
+
+/** true, wenn DataSheet ein Backup enthält (Hinweiszeile in A1). */
+function v3IsBackupLayout_(sheet) {
+  return String(sheet.getRange(1, 1).getValue() || '').indexOf(V3.BACKUP_PREFIX) === 0;
+}
+
+/** Rückweg: DataSheet im alten Aufbau (Kopfzeile in Zeile 1) aus dem Kalender schreiben. */
+function v3WriteSheetLayout_(sheet) {
+  const cats = v3Categories_();
+  const rows = v3SortedFields_(v3ListEvents_({ forApp: true }), cats).map(({ ev, f }) => {
+    const b = v3BackupRow_(ev, f); // Subject … Folgetermin-ID in Backup-Reihenfolge
+    const by = {};
+    V3.BACKUP_HEADERS.forEach((h, i) => { by[h] = b[i]; });
+    by.LastSyncHash = ''; // leer → der 15-Minuten-Sync schreibt jeden Termin einmal im alten Format
+    return V3.SHEET_HEADERS.map(h => (by[h] == null ? '' : by[h]));
+  });
+  v3WriteTable_(sheet, [V3.SHEET_HEADERS].concat(rows), 1);
+  v3WriteCategorySheet_(getSs_().getSheetByName(CONFIG.CATEGORY_SHEET_NAME) || getSs_().insertSheet(CONFIG.CATEGORY_SHEET_NAME), cats.list);
+  try {
+    setupSheet(); // Status-Dropdown und Farben wie gewohnt
+  } catch (e) {
+    Logger.log('Sheet einrichten nach Rückweg: ' + errMsg_(e));
+  }
+}
+
+/* =========================
+   SCHUTZ (V3 Kapitel 5.2)
+   ========================= */
+
+/** Nur der Eigentümer (und damit das Script) darf schreiben. */
+function v3Protect_(sheet) {
+  if (!sheet) return;
+  try {
+    const type = SpreadsheetApp.ProtectionType.SHEET;
+    const p = sheet.getProtections(type).find(x => x.getDescription() === V3.PROTECT_DESC) ||
+      sheet.protect().setDescription(V3.PROTECT_DESC);
+    const me = (Session.getEffectiveUser().getEmail() || '').toLowerCase();
+    const others = p.getEditors().filter(u => (u.getEmail() || '').toLowerCase() !== me);
+    if (others.length) p.removeEditors(others);
+    if (p.canDomainEdit()) p.setDomainEdit(false);
+  } catch (e) {
+    Logger.log(`Schutz für „${sheet.getName()}“ nicht gesetzt: ${errMsg_(e)}`);
+  }
+}
+
+function v3Unprotect_(sheet) {
+  if (!sheet) return;
+  try {
+    sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET)
+      .filter(x => x.getDescription() === V3.PROTECT_DESC)
+      .forEach(x => x.remove());
+  } catch (e) {
+    Logger.log(`Schutz für „${sheet.getName()}“ nicht entfernt: ${errMsg_(e)}`);
+  }
+}
+
+/* =========================
+   WIEDERHERSTELLEN (V3 Kapitel 5.4)
+   ========================= */
+
+/** Menü: markierte Zeile in „Gelöscht“ oder „DataSheet“ wieder in den Kalender bringen. */
+function restoreFromBackup() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = getSs_().getActiveSheet();
+  try {
+    const row = sheet.getActiveRange() ? sheet.getActiveRange().getRow() : 0;
+    ui.alert('Termin wiederherstellen', v3RestoreRow_(sheet, row).message, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Termin wiederherstellen', errMsg_(e), ui.ButtonSet.OK);
+  }
+}
+
+/** → { restored: bool, message, eventId } */
+function v3RestoreRow_(sheet, rowIndex) {
+  if (!isCalendarMode_()) throw new Error('Wiederherstellen geht nur, wenn der Google Kalender die Datenquelle ist.');
+  const name = sheet.getName();
+  if (name !== V3.DELETED_SHEET && name !== CONFIG.SHEET_NAME) {
+    throw new Error(`Bitte zuerst im Blatt „${V3.DELETED_SHEET}“ oder „${CONFIG.SHEET_NAME}“ eine Terminzeile markieren.`);
+  }
+  const headerRow = name === CONFIG.SHEET_NAME && v3IsBackupLayout_(sheet) ? 2 : 1;
+  if (!rowIndex || rowIndex <= headerRow || rowIndex > sheet.getLastRow()) {
+    throw new Error('Bitte eine Terminzeile markieren (nicht die Kopfzeile).');
+  }
+  const width = sheet.getLastColumn();
+  const map = {};
+  sheet.getRange(headerRow, 1, 1, width).getValues()[0].forEach((h, i) => {
+    const k = String(h || '').trim().toLowerCase();
+    if (k && map[k] == null) map[k] = i;
+  });
+  if (map.eventid == null || map.subject == null) throw new Error('In diesem Blatt fehlen die Spalten „Subject“ oder „EventId“.');
+  const rec = rowToRecord_(sheet.getRange(rowIndex, 1, 1, width).getValues()[0], map);
+  if (!rec.subject) throw new Error('Die markierte Zeile ist leer.');
+
+  if (rec.eventId && v3GetEvent_(rec.eventId)) {
+    return { restored: false, message: 'Dieser Termin ist noch im Kalender.', eventId: rec.eventId };
+  }
+
+  return withWebLock_(() => {
+    const S = CONFIG.STATUS;
+    let status = normalizeStatus_(rec.status) || S.AKTIV;
+    if (status === S.LOESCHEN || status === S.GELOESCHT) status = S.AKTIV;
+    const oldId = rec.eventId;
+    // Verknüpfungen: Ursprung (movedTo = alte ID) und Folgetermin (movedFrom = alte ID)
+    const origins = oldId ? v3FindByPrivate_('movedTo', oldId) : [];
+    const follows = oldId ? v3FindByPrivate_('movedFrom', oldId) : [];
+    const exists = id => !!id && !/^Zeile\s/i.test(id) && !!v3GetEvent_(id);
+    const movedFromMap = {};
+    if (oldId && origins.length) movedFromMap[oldId] = origins[0].id;
+
+    const f = v3FieldsFromRow_({ rec, status, changed: v3Stamp_('wiederhergestellt') }, movedFromMap, exists);
+    const cats = v3Categories_();
+    const created = v3Insert_(f, cats);
+
+    origins.concat(follows).forEach(ev => {
+      try {
+        const g = v3Fields_(ev, cats);
+        if (g.movedTo === oldId) g.movedTo = created.id;
+        if (g.movedFrom === oldId) g.movedFrom = created.id;
+        v3Update_(ev, g, cats);
+      } catch (e) {
+        Logger.log(`Verknüpfung nicht aktualisiert (${ev.id}): ${errMsg_(e)}`);
+      }
+    });
+
+    sheet.getRange(rowIndex, map.eventid + 1).setValue(created.id);
+    v3CacheClear_();
+    const when = Utilities.formatDate(isoToDate_(f.date), CONFIG.TIMEZONE, 'dd.MM.yyyy') + (f.allDay ? '' : `, ${f.start} Uhr`);
+    return {
+      restored: true,
+      eventId: created.id,
+      message: `Wiederhergestellt: „${f.subject}“ am ${when}. Die neue EventId steht jetzt in der Zeile.`,
+    };
+  });
+}
+
+/** Termine mit einem bestimmten privaten Zusatzfeld (z. B. movedTo = ID). */
+function v3FindByPrivate_(key, value) {
+  const resp = v3Cal_(() => Calendar.Events.list(CONFIG.CALENDAR_ID, {
+    privateExtendedProperty: `${key}=${value}`,
+    singleEvents: false,
+    showDeleted: false,
+    maxResults: 50,
+  }));
+  return (resp.items || []).filter(ev => ev.status !== 'cancelled' && !ev.recurringEventId);
 }

@@ -131,6 +131,19 @@ const UI_TITLE = 'Feuerwehr Kalender-Sync';
 
 function onOpen(e) {
   try {
+    // V3 (Kalender ist Master): nur noch Backup/Wiederherstellen und Zugangscodes (Kapitel 5.2)
+    if (isCalendarMode_()) {
+      SpreadsheetApp.getUi()
+        .createMenu('📅 Dienstplan')
+        .addItem('Termin aus Backup wiederherstellen…', 'restoreFromBackup')
+        .addItem('Backup jetzt erstellen', 'backupToSheet')
+        .addSeparator()
+        .addItem('🔑 Zugangscode erstellen…', 'createAccessCode')
+        .addItem('🔑 Zugangscodes verwalten…', 'manageAccessCodes')
+        .addItem('📱 Link der App-Schnittstelle anzeigen', 'showWebAppUrl')
+        .addToUi();
+      return;
+    }
     SpreadsheetApp.getUi()
       .createMenu('🚒 Feuerwehr Kalender-Sync')
       .addItem('Jetzt synchronisieren', 'syncSheetToCalendar')

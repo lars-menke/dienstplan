@@ -267,6 +267,163 @@ function movedFrom(ev) {
   return m ? `${pad(m[1])}.${pad(m[2])}.` : '';
 }
 
+/* ---------- Wiederholung (RRULE) ---------- */
+
+const RR_DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const WD_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+const WD_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mo … So
+const ORDS = [1, 2, 3, 4, -1];
+const ordLabel = n => (n === -1 ? 'letzten' : `${n}.`);
+const sortDays = days => [...new Set(days)].sort((a, b) => WD_ORDER.indexOf(a) - WD_ORDER.indexOf(b));
+const sortOrds = ords => [...new Set(ords)].sort((a, b) => ORDS.indexOf(a) - ORDS.indexOf(b));
+
+/** n-ter Wochentag im Monat; der 5. zählt als „letzter“ (-1) */
+function nthWeekday(iso) {
+  const d = toDate(iso);
+  const n = Math.ceil(d.getDate() / 7);
+  return { n: n >= 5 ? -1 : n, wd: d.getDay() };
+}
+
+function isLastOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).getMonth() !== d.getMonth();
+}
+
+/**
+ * Wiederholung als Formular-Zustand:
+ * { freq: NONE|DAILY|WEEKLY|MONTHLY|YEARLY|CUSTOM, interval, days[], monthMode: day|weekday,
+ *   monthDay, ords[], wd, end: never|until|count, until, count, raw }
+ */
+function defaultRep(iso) {
+  const d = toDate(iso);
+  return {
+    freq: 'NONE', interval: 1, days: [d.getDay()], monthMode: 'day', monthDay: d.getDate(),
+    ords: [nthWeekday(iso).n], wd: d.getDay(), end: 'never', until: '', count: 10, raw: '',
+  };
+}
+
+/** RRULE → Formular-Zustand. Was das Formular nicht abbilden kann, bleibt als „CUSTOM“ unverändert. */
+function parseRule(rule, iso) {
+  const rep = defaultRep(iso || todayIso());
+  const raw = String(rule || '').replace(/^RRULE:/i, '').trim().toUpperCase();
+  if (!raw) return rep;
+  rep.raw = raw;
+  rep.freq = 'CUSTOM';
+  const p = {};
+  raw.split(';').forEach(kv => { const [k, v] = kv.split('='); if (k) p[k] = v || ''; });
+  const u = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z)?$/.exec(p.UNTIL || '');
+  if (u) {
+    rep.until = u[4] ? toIso(new Date(Date.UTC(+u[1], +u[2] - 1, +u[3], +u[4], +u[5], +u[6]))) : `${u[1]}-${u[2]}-${u[3]}`;
+    rep.end = 'until';
+  }
+  if (+p.COUNT > 0) { rep.count = +p.COUNT; rep.end = 'count'; }
+
+  const allowed = ['FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY', 'UNTIL', 'COUNT', 'WKST'];
+  if (Object.keys(p).some(k => !allowed.includes(k)) || (p.UNTIL && p.COUNT) || (p.UNTIL && !u)) return rep;
+  const interval = p.INTERVAL ? +p.INTERVAL : 1;
+  if (!(interval >= 1 && interval <= 99)) return rep;
+  const items = (p.BYDAY ? p.BYDAY.split(',') : []).map(x => /^([+-]?\d)?([A-Z]{2})$/.exec(x));
+  if (items.some(m => !m || !RR_DAYS.includes(m[2]))) return rep;
+  const byday = items.map(m => ({ n: m[1] ? +m[1] : 0, wd: RR_DAYS.indexOf(m[2]) }));
+
+  switch (p.FREQ) {
+    case 'DAILY':
+    case 'YEARLY':
+      if (byday.length || p.BYMONTHDAY) return rep;
+      break;
+    case 'WEEKLY':
+      if (p.BYMONTHDAY || byday.some(i => i.n)) return rep;
+      if (byday.length) rep.days = sortDays(byday.map(i => i.wd));
+      break;
+    case 'MONTHLY':
+      if (p.BYMONTHDAY) {
+        if (byday.length || !/^\d{1,2}$/.test(p.BYMONTHDAY) || +p.BYMONTHDAY > 31) return rep;
+        rep.monthMode = 'day';
+        rep.monthDay = +p.BYMONTHDAY;
+      } else if (byday.length) {
+        if (new Set(byday.map(i => i.wd)).size !== 1 || byday.some(i => !ORDS.includes(i.n))) return rep;
+        rep.monthMode = 'weekday';
+        rep.wd = byday[0].wd;
+        rep.ords = sortOrds(byday.map(i => i.n));
+      }
+      break;
+    default:
+      return rep;
+  }
+  rep.freq = p.FREQ;
+  rep.interval = interval;
+  return rep;
+}
+
+/** Formular-Zustand → RRULE (leer = keine Wiederholung) */
+function buildRule(rep, allDay) {
+  if (rep.freq === 'NONE') return '';
+  if (rep.freq === 'CUSTOM') return rep.raw ? `RRULE:${rep.raw}` : '';
+  const parts = [`FREQ=${rep.freq}`];
+  if (rep.interval > 1) parts.push(`INTERVAL=${rep.interval}`);
+  if (rep.freq === 'WEEKLY' && rep.days.length) parts.push(`BYDAY=${sortDays(rep.days).map(d => RR_DAYS[d]).join(',')}`);
+  if (rep.freq === 'MONTHLY') {
+    if (rep.monthMode === 'weekday') parts.push(`BYDAY=${sortOrds(rep.ords).map(n => `${n}${RR_DAYS[rep.wd]}`).join(',')}`);
+    else parts.push(`BYMONTHDAY=${rep.monthDay}`);
+  }
+  // UNTIL: ganztägig als Datum, sonst Ende des Tages (UTC, schließt den letzten Tag sicher ein)
+  if (rep.end === 'until' && rep.until) parts.push(`UNTIL=${rep.until.replace(/-/g, '')}${allDay ? '' : 'T235959Z'}`);
+  if (rep.end === 'count' && rep.count > 0) parts.push(`COUNT=${rep.count}`);
+  return `RRULE:${parts.join(';')}`;
+}
+
+/** Passt der Tag zur Regel? (für den ersten Termin) */
+function repMatches(rep, iso) {
+  const d = toDate(iso);
+  if (rep.freq === 'WEEKLY') return rep.days.includes(d.getDay());
+  if (rep.freq === 'MONTHLY') {
+    if (rep.monthMode === 'day') return d.getDate() === rep.monthDay;
+    return d.getDay() === rep.wd && rep.ords.some(n => (n === -1 ? isLastOfMonth(d) : Math.ceil(d.getDate() / 7) === n));
+  }
+  return true;
+}
+
+/** Erster Tag ab iso, der zur Regel passt (Google zählt das Startdatum sonst immer mit). */
+function firstOccurrence(rep, iso) {
+  if (!['WEEKLY', 'MONTHLY'].includes(rep.freq)) return iso;
+  for (let i = 0; i < 800; i++) {
+    const day = addDays(iso, i);
+    if (repMatches(rep, day)) return day;
+  }
+  return iso;
+}
+
+/** Text zur Regel: „jeden Monat am 1. Samstag bis 30.06.2027“ (short: Wochentage abgekürzt) */
+function repText(rep, short) {
+  const wdName = d => (short ? WD_SHORT[d] : WD_LONG[d]);
+  const every = (one, many) => (rep.interval > 1 ? `alle ${rep.interval} ${many}` : one);
+  let t;
+  switch (rep.freq) {
+    case 'NONE': return '';
+    case 'DAILY': t = every('täglich', 'Tage'); break;
+    case 'WEEKLY': t = `${every('jede Woche', 'Wochen')} (${sortDays(rep.days).map(d => WD_SHORT[d]).join(', ')})`; break;
+    case 'MONTHLY':
+      t = every('jeden Monat', 'Monate') + (rep.monthMode === 'weekday'
+        ? ` am ${sortOrds(rep.ords).map(ordLabel).join(' + ')} ${wdName(rep.wd)}`
+        : ` am ${rep.monthDay}.`);
+      break;
+    case 'YEARLY': t = every('jedes Jahr', 'Jahre'); break;
+    default: {
+      const f = (/FREQ=(\w+)/.exec(rep.raw) || [])[1];
+      t = `${{ DAILY: 'täglich', WEEKLY: 'wöchentlich', MONTHLY: 'monatlich', YEARLY: 'jährlich' }[f] || 'Serie'} (eigene Regel)`;
+    }
+  }
+  if (rep.end === 'until' && rep.until) t += ` bis ${fmt(rep.until, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  if (rep.end === 'count' && rep.count) t += ` · ${rep.count}-mal`;
+  return t;
+}
+
+/** Kurzer Text für Liste/Tabelle/Details */
+function repeatText(ev) {
+  if (!ev.recurrence) return ev.recurring ? 'Serie' : '';
+  return repText(parseRule(ev.recurrence, ev.date), true);
+}
+
 const minutes = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
 const hhmm = mins => `${pad(Math.floor(((mins % 1440) + 1440) % 1440 / 60))}:${pad(((mins % 60) + 60) % 60)}`;
 
@@ -293,7 +450,7 @@ function renderHeader() {
   } else {
     offlineEl.hidden = true;
   }
-  $('#btnNew').hidden = !can('write');
+  $('#btnNew').hidden = !can('write') || (state.view === 'table' && tbl.selected.size > 0);
 }
 
 /* ---------- Liste (V2, Kapitel 8.1) ---------- */
@@ -305,12 +462,19 @@ function matches(ev, q) {
 function render() {
   renderHeader();
   if (state.page) renderPage();
+  // Tabelle (V3 7.2): nur Schreiben/Admin und ab 768 px – sonst zurück zur Liste
+  if (state.view === 'table' && state.role && !tableAllowed()) state.view = 'list';
+  $('#btnTable').hidden = !tableAllowed();
   const week = state.view === 'week';
+  const table = state.view === 'table';
   $('#weekHead').hidden = !week;
   $('#searchBox').hidden = week;
   document.querySelectorAll('.seg [data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
   listEl.classList.toggle('week-list', week);
+  listEl.classList.toggle('table-list', table);
+  document.body.classList.toggle('is-table', table);
   if (week && state.loadedAt) return renderWeek();
+  if (table && state.loadedAt) return renderTable();
   if (!state.loadedAt) {
     if (state.loadError) {
       listEl.innerHTML = `<div class="empty">${icon('wifiOff', 32)}<p>${esc(state.loadError.message)}</p>
@@ -559,7 +723,7 @@ function renderWeek() {
 }
 
 function setView(view) {
-  state.view = view === 'week' ? 'week' : 'list';
+  state.view = view === 'week' || (view === 'table' && tableAllowed()) ? view : 'list';
   store.set(KEY_VIEW, state.view);
   render();
   window.scrollTo(0, 0);
@@ -781,7 +945,10 @@ async function ptrEnd() {
 
 // am ganzen App-Bereich, damit auch leere Listen gezogen werden können
 appEl.addEventListener('touchstart', e => {
-  if (e.touches.length === 1 && !e.target.closest('#dayStrip, .swipe-wrap.dragging')) ptrStart(e.touches[0].clientX, e.touches[0].clientY);
+  const tblScroll = e.target.closest('.tbl-scroll');
+  if (e.touches.length === 1 && !e.target.closest('#dayStrip, .swipe-wrap.dragging') && !(tblScroll && tblScroll.scrollTop > 0)) {
+    ptrStart(e.touches[0].clientX, e.touches[0].clientY);
+  }
   else ptr.active = false;
 }, { passive: true });
 appEl.addEventListener('touchmove', e => {
@@ -929,6 +1096,7 @@ function restoreFocus() {
   setTimeout(() => {
     let target = el && document.contains(el) ? el : null;
     if (!target && key) target = listEl.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (!target && state.view === 'table' && tbl.focus && !state.page) target = tableCell(tbl.focus.id, tbl.focus.col);
     if (!target) target = state.page ? pageEl.querySelector('h1') : $('#btnMore');
     if (state.page && target && !pageEl.contains(target)) target = pageEl.querySelector('h1');
     if (target && (!appEl.hidden || state.page)) target.focus({ preventScroll: true });
@@ -963,7 +1131,7 @@ function openDetail(ev) {
       ev.folgetermin ? ' Der neue Termin ist angelegt.' : ''}</span></div>`);
   }
   if (ev.status === S.ABGESAGT) notes.push(`<div class="note">${icon('ban', 18)}<span>Abgesagt. Der Termin bleibt im Kalender sichtbar.</span></div>`);
-  if (ev.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Serientermin – Änderungen gelten für die ganze Serie.</span></div>`);
+  if (ev.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Serientermin${repeatText(ev) && repeatText(ev) !== 'Serie' ? ` (${esc(repeatText(ev))})` : ''} – Änderungen gelten für die ganze Serie.</span></div>`);
 
   const last = ev.lastChange ? `Letzte Änderung: ${esc(ev.lastChange)}` : '';
   let actions;
@@ -1140,7 +1308,7 @@ function openMove(ev) {
 
 /* ---------- Neuer Termin / Bearbeiten (V2, Kapitel 8.5, ohne Vorlagen) ---------- */
 
-function openForm(ev) {
+function openForm(ev, opts) {
   const isNew = !ev;
   // in der Wochenansicht startet ein neuer Termin am gewählten Tag
   const today = state.view === 'week' && state.selDay ? state.selDay : todayIso();
@@ -1149,6 +1317,8 @@ function openForm(ev) {
     allDay: false, location: '', description: '', category: '',
   };
   let category = e.category || '';
+  const rep = parseRule(e.recurrence || '', e.date);
+  const wasCustom = rep.freq === 'CUSTOM';
 
   const chips = () => {
     const opts = categoryOptions();
@@ -1178,6 +1348,43 @@ function openForm(ev) {
         <label class="field" data-time>Beginn<input type="time" id="fStart" value="${esc(e.start)}"></label>
         <label class="field" data-time>Ende<input type="time" id="fStop" value="${esc(e.end)}"></label>
       </div>
+      <fieldset class="rep-box">
+        <legend class="label">Wiederholung</legend>
+        <div class="rep-row">
+          <select id="fRep" aria-label="Wiederholung">
+            <option value="NONE">Keine</option><option value="DAILY">Täglich</option><option value="WEEKLY">Wöchentlich</option>
+            <option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option>
+            ${wasCustom ? '<option value="CUSTOM">Eigene Regel (aus Google Kalender)</option>' : ''}
+          </select>
+          <label class="rep-every" data-rep="int">alle <input type="number" id="fInt" min="1" max="99" inputmode="numeric" value="${rep.interval}" aria-label="Abstand"> <span id="fIntUnit"></span></label>
+        </div>
+        <div class="chips rep-days" data-rep="weekly" role="group" aria-label="An diesen Wochentagen">
+          ${WD_ORDER.map(d => `<button class="chip day" type="button" data-wd="${d}" aria-pressed="false" aria-label="${WD_LONG[d]}">${WD_SHORT[d]}</button>`).join('')}
+        </div>
+        <div class="stack" data-rep="monthly">
+          <div class="seg" role="group" aria-label="Monatlich am">
+            <button type="button" data-mm="weekday" aria-pressed="false">Am Wochentag</button>
+            <button type="button" data-mm="day" aria-pressed="false">Am Tag im Monat</button>
+          </div>
+          <div class="rep-row" data-rep="mweek">
+            <span class="rep-word">am</span>
+            <div class="chips" role="group" aria-label="Welcher im Monat">
+              ${ORDS.map(n => `<button class="chip day" type="button" data-ord="${n}" aria-pressed="false">${n === -1 ? 'Letzten' : `${n}.`}</button>`).join('')}
+            </div>
+            <select id="fWd" aria-label="Wochentag">${WD_ORDER.map(d => `<option value="${d}">${WD_LONG[d]}</option>`).join('')}</select>
+          </div>
+          <label class="rep-row" data-rep="mday"><span class="rep-word">am</span><input type="number" id="fMday" min="1" max="31" inputmode="numeric" value="${rep.monthDay}" aria-label="Tag im Monat"><span class="rep-word">. Tag</span></label>
+        </div>
+        <div class="rep-row" data-rep="end">
+          <select id="fEndMode" aria-label="Ende der Serie">
+            <option value="never">Ohne Ende</option><option value="until">Endet am</option><option value="count">Endet nach</option>
+          </select>
+          <input type="date" id="fUntil" value="${esc(rep.until)}" aria-label="Letzter Termin" data-endf="until">
+          <label class="rep-every" data-endf="count"><input type="number" id="fCount" min="1" max="999" inputmode="numeric" value="${rep.count}" aria-label="Anzahl Termine"> Terminen</label>
+        </div>
+        <p class="small-note rep-preview" id="fRepPreview" aria-live="polite"></p>
+        <p class="small-note" id="fRepNote" hidden>Diese Wiederholung wurde im Google Kalender eingestellt. Sie bleibt so, solange du hier nichts anderes wählst.</p>
+      </fieldset>
       <label class="field">Ort<input id="fLoc" value="${esc(e.location)}" placeholder="z. B. Feuerwehrhaus"></label>
       <div id="fCats">${chips()}</div>
       <label class="field">Beschreibung<textarea id="fDesc" rows="2" placeholder="z. B. PA mitbringen">${esc(e.description)}</textarea></label>
@@ -1186,7 +1393,7 @@ function openForm(ev) {
     <div class="sheet-foot">
       <button class="btn small" type="button" id="fBack" style="flex:1">Abbrechen</button>
       <button class="btn primary" type="button" id="fOk" style="flex:2">${isNew ? 'Anlegen' : 'Speichern'}</button>
-    </div>`);
+    </div>`, opts && opts.focus ? { focus: opts.focus } : {});
 
   const toggleTimes = () => sheetEl.querySelectorAll('[data-time]').forEach(el => (el.hidden = $('#fAll').checked));
 
@@ -1210,12 +1417,75 @@ function openForm(ev) {
   $('#fAll').onchange = toggleTimes;
   toggleTimes();
 
+  // Wiederholung: Bedienelemente ↔ rep
+  const repEl = $('#fRep');
+  repEl.value = rep.freq;
+  $('#fWd').value = String(rep.wd);
+  $('#fEndMode').value = rep.end;
+  const units = { DAILY: ['Tag', 'Tage'], WEEKLY: ['Woche', 'Wochen'], MONTHLY: ['Monat', 'Monate'], YEARLY: ['Jahr', 'Jahre'] };
+  const showRep = () => {
+    const f = rep.freq;
+    const active = f !== 'NONE' && f !== 'CUSTOM';
+    sheetEl.querySelectorAll('[data-rep]').forEach(el => {
+      const k = el.dataset.rep;
+      el.hidden = !active || (k === 'weekly' && f !== 'WEEKLY') || (k === 'monthly' && f !== 'MONTHLY') ||
+        (k === 'mweek' && rep.monthMode !== 'weekday') || (k === 'mday' && rep.monthMode !== 'day');
+    });
+    sheetEl.querySelectorAll('[data-endf]').forEach(el => (el.hidden = el.dataset.endf !== rep.end));
+    if (units[f]) $('#fIntUnit').textContent = units[f][rep.interval === 1 ? 0 : 1];
+    sheetEl.querySelectorAll('[data-wd]').forEach(b => b.setAttribute('aria-pressed', String(rep.days.includes(+b.dataset.wd))));
+    sheetEl.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', String(rep.ords.includes(+b.dataset.ord))));
+    sheetEl.querySelectorAll('[data-mm]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mm === rep.monthMode)));
+    $('#fRepNote').hidden = f !== 'CUSTOM';
+    // Vorschau inkl. erstem Termin, falls das Datum nicht zur Regel passt
+    const date = $('#fDate').value;
+    let text = active || f === 'CUSTOM' ? repText(rep, false) : '';
+    if (active && date) {
+      const first = firstOccurrence(rep, date);
+      if (first !== date) text += ` · Erster Termin: ${wdShort(first)} ${fmt(first, { day: '2-digit', month: '2-digit', year: 'numeric' })} (Datum wird angepasst)`;
+    }
+    $('#fRepPreview').textContent = text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+    $('#fRepPreview').hidden = !text;
+  };
+  repEl.onchange = () => {
+    const prev = rep.freq;
+    rep.freq = repEl.value;
+    // beim Einschalten passend zum gewählten Datum vorbelegen
+    if (prev === 'NONE' || prev === 'CUSTOM') {
+      const d = $('#fDate').value || e.date;
+      const def = defaultRep(d);
+      Object.assign(rep, { days: def.days, monthDay: def.monthDay, ords: def.ords, wd: def.wd, monthMode: 'weekday' });
+      $('#fWd').value = String(rep.wd);
+      $('#fMday').value = rep.monthDay;
+    }
+    showRep();
+  };
+  $('#fInt').oninput = () => { rep.interval = Math.max(1, Math.min(99, parseInt($('#fInt').value, 10) || 1)); showRep(); };
+  $('#fWd').onchange = () => { rep.wd = +$('#fWd').value; showRep(); };
+  $('#fMday').oninput = () => { rep.monthDay = Math.max(1, Math.min(31, parseInt($('#fMday').value, 10) || 1)); showRep(); };
+  $('#fEndMode').onchange = () => { rep.end = $('#fEndMode').value; showRep(); };
+  $('#fUntil').oninput = $('#fUntil').onchange = () => { rep.until = $('#fUntil').value; showRep(); };
+  $('#fCount').oninput = () => { rep.count = Math.max(1, Math.min(999, parseInt($('#fCount').value, 10) || 1)); showRep(); };
+  sheetEl.querySelector('.rep-box').addEventListener('click', ev2 => {
+    const wd = ev2.target.closest('[data-wd]');
+    const ord = ev2.target.closest('[data-ord]');
+    const mm = ev2.target.closest('[data-mm]');
+    const toggle = (list, v) => (list.includes(v) ? list.filter(x => x !== v) : list.concat(v));
+    if (wd) rep.days = toggle(rep.days, +wd.dataset.wd);
+    else if (ord) rep.ords = toggle(rep.ords, +ord.dataset.ord);
+    else if (mm) rep.monthMode = mm.dataset.mm;
+    else return;
+    showRep();
+  });
+  showRep();
+
   let prevDate = $('#fDate').value;
   $('#fDate').onchange = () => {
     const d = $('#fDate').value;
     const end = $('#fEnd').value;
     if (!end || end === prevDate || end < d) $('#fEnd').value = d;
     prevDate = d;
+    showRep(); // Vorschau „Erster Termin“ hängt vom Datum ab
   };
 
   $('#fCats').addEventListener('click', ev2 => {
@@ -1239,7 +1509,21 @@ function openForm(ev) {
       location: $('#fLoc').value.trim(),
       description: $('#fDesc').value.trim(),
       category,
+      recurrence: buildRule(rep, $('#fAll').checked),
     };
+    if (rep.freq === 'WEEKLY' && !rep.days.length) return toast('Bitte mindestens einen Wochentag wählen.', true);
+    if (rep.freq === 'MONTHLY' && rep.monthMode === 'weekday' && !rep.ords.length) return toast('Bitte wählen, der wievielte Wochentag im Monat.', true);
+    if (rep.freq !== 'NONE' && rep.freq !== 'CUSTOM' && data.date) {
+      // Startdatum auf den ersten passenden Tag legen (mehrtägige Termine behalten ihre Länge)
+      const first = firstOccurrence(rep, data.date);
+      if (first !== data.date) {
+        const days = Math.round((toDate(data.endDate || data.date) - toDate(data.date)) / 86400000);
+        data.date = first;
+        data.endDate = addDays(first, Math.max(0, days));
+      }
+      if (rep.end === 'until' && !rep.until) { $('#fUntil').focus(); return toast('Bitte das Datum des letzten Termins wählen.', true); }
+      if (rep.end === 'until' && rep.until < data.date) { $('#fUntil').focus(); return toast('Der letzte Termin der Serie liegt vor dem ersten.', true); }
+    }
     if (!data.subject) { $('#fSub').focus(); return toast('Bitte einen Titel eingeben.', true); }
     if (!data.date) { $('#fDate').focus(); return toast('Bitte ein Datum wählen.', true); }
     if (!data.allDay && !data.start) { $('#fStart').focus(); return toast('Bitte eine Beginn-Uhrzeit eingeben.', true); }
@@ -1894,6 +2178,18 @@ $('#btnToday').onclick = () => {
   }
   state.q = '';
   $('#q').value = '';
+  if (state.view === 'table') {
+    render();
+    const t = todayIso();
+    const row = tableRows().find(ev => (ev.endDate || ev.date) >= t);
+    if (row) {
+      tbl.focus = { id: row.eventId, col: 'date' };
+      renderTable();
+      const td = tableCell(row.eventId, 'date');
+      if (td) { td.focus({ preventScroll: true }); td.scrollIntoView({ block: 'center' }); }
+    }
+    return;
+  }
   render();
   const target = $('#todayAnchor') || listEl.querySelector('[data-upcoming]');
   if (target) {
@@ -1936,8 +2232,10 @@ function cleanupBeta() {
 
 (function start() {
   applyTheme();
-  state.view = store.get(KEY_VIEW) === 'week' ? 'week' : 'list';
+  const savedView = store.get(KEY_VIEW);
+  state.view = savedView === 'week' || savedView === 'table' ? savedView : 'list';
   hydrateIcons(document);
+  tableInit();
 
   if (!API_URL || API_URL.startsWith('HIER')) {
     showLogin('Die App ist noch nicht eingerichtet: In config.js fehlt der Link zur Schnittstelle.');

@@ -53,6 +53,7 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 | Tabelle | direkt in der Zelle bearbeiten, Mehrfachauswahl, Sortieren, Filtern (Schreiben/Admin, ab 768 px) |
 | Kategorien verwalten | Name und Kalenderfarbe (nur Admin) |
 | Termine importieren | Excel, CSV oder ICS mit Vorschau und Dubletten-Prüfung (nur Admin) |
+| Termine exportieren | sichtbare oder ausgewählte Termine der Tabelle als Excel/CSV, leere Vorlage (nur Admin) |
 | Zugangscodes verwalten | persönliche Codes mit Rolle, Mannschafts-Code (nur Admin) |
 | Backup und Wiederherstellen | nachts ins Sheet; gelöschte Termine per Menü zurückholen |
 
@@ -370,12 +371,13 @@ Einheitliches Sheet: Titel, ein erklärender Satz, [Aktion] (primär), [Zurück]
 - **Mehrfachauswahl:** Kästchen, Shift+Klick (Bereich), „Alle“ im Kopf. Aktionsleiste unten (statt „+ Termin“): „Absagen (n)“, „Wieder aktivieren (n)“ (`setStatusBulk`), „Kategorie setzen…“ (`saveEvents`, in Paketen zu 50), „Löschen (n)“ (nur Admin, mit Bestätigung, nacheinander über `setStatus`), „Auswahl aufheben“.
 - **Sortieren** per Spaltenkopf (zweiter Klick dreht um, `aria-sort`); **Filter** Zeitraum („Ab heute“ – laufende Serien immer dabei – / „Alle“), Kategorie (inkl. „Ohne“), Status; Suche wie in der Liste.
 - **Tastatur:** Pfeile wechseln die Zelle (Roving-Tabindex, `role="grid"`), Pos1/Ende, Strg+Pos1/Ende, Bild auf/ab, Enter oder F2 bearbeitet, Leertaste wählt die Zeile, Esc hebt die Auswahl auf.
+- **Exportieren** (nur Admin): Knopf über der Tabelle exportiert genau die sichtbaren Termine (Filter, Suche, Sortierung); bei Mehrfachauswahl „Exportieren (n)“ in der Aktionsleiste nur die ausgewählten. Sheet mit Umfang („12 Termine · wie in der Tabelle (ab heute, Kategorie Übung)“) und Wahl **Excel (.xlsx)** oder **CSV**. Spalten wie beim Import: Titel, Datum, Beginn, Ende, Enddatum, Ganztägig, Ort, Kategorie, Beschreibung, Wiederholung (RRULE ohne „RRULE:“) und Status (nur zur Info, wird beim Import nicht gelesen). Excel mit echten Datums- (`dd.mm.yyyy`) und Uhrzeitzellen (`hh:mm`), Autofilter und Spaltenbreiten; CSV mit Semikolon, UTF-8 mit BOM. Dateiname `dienstplan-export-JJJJ-MM-TT`. Damit lässt sich z. B. das Vorjahr als Vorlage nehmen: exportieren, Daten in Excel ändern, wieder importieren.
 - Heute-Zeile in Akzent-Hintergrund, vergangene Termine gedämpft, Abgesagt durchgestrichen. Hell/Dunkel über die Tokens aus Kapitel 12.
 
 
 ### 9.12 Termine importieren (`Import`, Admin)
 Weitere Aktionen → Verwaltung → **Termine importieren** öffnet eine Seite mit vier Schritten (Anzeige 1 Datei · 2 Spalten · 3 Vorschau · 4 Import):
-1. **Datei** wählen oder hineinziehen: `.xlsx`, `.xls`, `.csv`, `.ics`. Gelesen wird nur im Browser. Excel mit mehreren Blättern: Blatt wählen.
+1. **Datei** wählen oder hineinziehen: `.xlsx`, `.xls`, `.csv`, `.ics`. Gelesen wird nur im Browser. Excel mit mehreren Blättern: Blatt wählen. Darunter **Vorlage für eine neue Liste**: „Vorlage Excel“ / „Vorlage CSV“ (Kopfzeile wie beim Export plus zwei Beispielzeilen, Datei `dienstplan-vorlage`).
 2. **Spalten zuordnen:** Titel und Datum Pflicht; Beginn, Enddatum, Ende, Ganztägig, Ort, Beschreibung, Kategorie, Wiederholung optional. Übliche Namen (Subject/Betreff/Titel, Start Date/Datum, Beginn/Uhrzeit, Ort/Location …) werden automatisch zugeordnet, die Zuordnung wird gemerkt (`dienstplan.importMap`). Neben jeder Auswahl steht der Wert aus der ersten Zeile. Das bisherige Excel-Format und ICS-Dateien überspringen diesen Schritt.
 3. **Vorschau** als Tabelle: ✓ neu · ⚠ möglicherweise doppelt (gleiches Datum, gleicher Beginn bzw. beide ganztägig, ähnlicher Titel – gegen den Kalender und frühere Zeilen der Datei; standardmäßig abgewählt) · ✗ Fehler mit Grund (nicht wählbar). Knöpfe „Nur neue“, „Alle wählbaren“, „Keine“. Unbekannte Kategorien: je Kategorie „neu anlegen“ (Farbe wählbar, Vorschlag: noch freie Farbe) oder „ohne Kategorie“.
 4. **Import:** neue Kategorien anlegen, dann Termine in Paketen zu 50 über `saveEvents`, mit Fortschrittsbalken; Zusammenfassung „32 angelegt, 3 übersprungen, 1 Fehler“ mit Fehlerliste; [Weitere Datei] · [Fertig].
@@ -651,7 +653,7 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | `app.css` | Styling, Design-Tokens Hell/Dunkel |
 | `app.js` | gesamte Logik (Anmeldung, API, Liste, Woche, Sheets, Gesten, Verwaltung) |
 | `table.js` | Tabellenansicht (Kapitel 9.11), wird vor `app.js` geladen |
-| `import.js` | Termine importieren (Kapitel 9.12), wird vor `app.js` geladen |
+| `import.js` | Termine importieren und exportieren, Vorlage (Kapitel 9.11, 9.12), wird vor `app.js` geladen |
 | `vendor/` | SheetJS `xlsx.full.min.js` 0.20.3 (Apache-2.0, Lizenz und Herkunft in `vendor/README.md`), nur für den Excel-Import |
 | `docs/beispiele/` | Beispieldatei für den Import |
 | `icons.js` | Inline-SVG-Icons |
@@ -684,4 +686,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 09.11.2026 | V3 Etappe 2: nächtliches Backup, Blattschutz, Blatt „Gelöscht“, Wiederherstellen, Menü „📅 Dienstplan“ (5.1) |
 | 09.11.2026 | V3 Etappe 4: Tabellenansicht, Wiederholungen im Formular (n-ter Wochentag, Ende), „Letzte Änderung“ immer gefüllt (5.2, Cache bis `dienstplan-v11`) |
 | 09.11.2026 | V3 Etappe 3: alter Sheet-Weg, 15-Minuten-Sync, Marker und `LastSyncHash` entfernt, Schalter `DATENQUELLE` entfällt; V3 in diese Spezifikation eingearbeitet (6.0) |
-| 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), Cache `dienstplan-v12` |
+| 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), dazu Export aus der Tabelle und Vorlage (nur Admin), Cache `dienstplan-v12` |

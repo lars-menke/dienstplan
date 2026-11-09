@@ -406,7 +406,15 @@ function impStep1Html() {
       <span>Excel (.xlsx, .xls), CSV oder Kalender-Datei (.ics) – oder hierher ziehen</span>
       <input type="file" id="impFile" accept=".xlsx,.xls,.csv,.ics,text/csv,text/calendar,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
     </label>
-    <div class="note">${icon('info', 18)}<span>Die Datei wird nur hier im Browser gelesen. Du siehst vor dem Import eine Vorschau und entscheidest, welche Termine übernommen werden.</span></div>`}`;
+    <div class="note">${icon('info', 18)}<span>Die Datei wird nur hier im Browser gelesen. Du siehst vor dem Import eine Vorschau und entscheidest, welche Termine übernommen werden.</span></div>
+    <div class="imp-template">
+      <span class="label">Vorlage für eine neue Liste</span>
+      <span class="small-note">Leere Tabelle mit den passenden Spalten und zwei Beispielzeilen. Ausfüllen und hier wieder importieren.</span>
+      <div class="row-btns">
+        <button class="btn small" type="button" data-tpl-dl="xlsx" style="flex:1">${icon('share', 18)}Vorlage Excel</button>
+        <button class="btn small" type="button" data-tpl-dl="csv" style="flex:1">Vorlage CSV</button>
+      </div>
+    </div>`}`;
 }
 
 function impStep2Html() {
@@ -538,6 +546,7 @@ function impBind() {
     });
   }
   pageEl.querySelectorAll('[data-sheet]').forEach(b => (b.onclick = () => impUseSheet(b.dataset.sheet)));
+  pageEl.querySelectorAll('[data-tpl-dl]').forEach(b => (b.onclick = () => expDownload(b.dataset.tplDl, expTemplateRows(), 'dienstplan-vorlage', b)));
   pageEl.querySelectorAll('[data-map]').forEach(s => (s.onchange = () => {
     imp.mapping[s.dataset.map] = +s.value;
     const row = s.closest('.imp-map-row');
@@ -720,3 +729,120 @@ async function impRun() {
   impRender();
   toast(`${result.created} ${result.created === 1 ? 'Termin' : 'Termine'} importiert.`, result.failed.length > 0);
 }
+
+/* =========================
+   EXPORT (nur Admin) – gleiche Spalten wie der Import, damit die Datei
+   bearbeitet und ohne Zuordnung wieder importiert werden kann
+   ========================= */
+
+const EXP_HEADERS = ['Titel', 'Datum', 'Beginn', 'Ende', 'Enddatum', 'Ganztägig', 'Ort', 'Kategorie', 'Beschreibung', 'Wiederholung', 'Status'];
+const EXP_STATUS = { AKTIV: 'Aktiv', ABGESAGT: 'Abgesagt', VERSCHOBEN: 'Verschoben' };
+
+const expCanUse = () => ROLE_RANK[state.role] === ROLE_RANK.admin;
+
+/** 'yyyy-mm-dd' → 'TT.MM.JJJJ' */
+const expDe = iso => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '');
+
+/** Termin → Zeile (Text). Wiederholung als Regel ohne „RRULE:“, Status nur zur Info (wird beim Import nicht gelesen). */
+function expRow(ev) {
+  return [
+    ev.subject || '', expDe(ev.date), ev.allDay ? '' : ev.start || '', ev.allDay ? '' : ev.end || '',
+    ev.endDate && ev.endDate !== ev.date ? expDe(ev.endDate) : '', ev.allDay ? 'ja' : '',
+    ev.location || '', ev.category || '', ev.description || '',
+    String(ev.recurrence || '').replace(/^RRULE:/i, ''), EXP_STATUS[ev.status] || '',
+  ];
+}
+
+function expTemplateRows() {
+  const next = addDays(todayIso(), 7);
+  return [
+    ['Übungsdienst: Beispiel', expDe(next), '19:30', '21:30', '', '', 'Feuerwehrhaus', 'Übung', 'Diese Zeile ersetzen oder löschen', '', ''],
+    ['Ganztägiger Termin', expDe(addDays(next, 3)), '', '', '', 'ja', '', 'Tradition', 'Ohne Uhrzeit = ganztägig', '', ''],
+  ];
+}
+
+function expSave(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/** CSV wie deutsches Excel: Semikolon, UTF-8 mit BOM, CRLF */
+function expCsv(rows) {
+  const cell = v => {
+    const s = String(v == null ? '' : v);
+    return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return '﻿' + [EXP_HEADERS].concat(rows).map(r => r.map(cell).join(';')).join('\r\n') + '\r\n';
+}
+
+/** Excel: Datum als echte Datumszellen (TT.MM.JJJJ), Zeiten als Uhrzeit (hh:mm) – so lässt sich in Excel rechnen. */
+async function expXlsx(rows, sheetName) {
+  const XLSX = await impLoadXlsx();
+  const serial = de => { const [d, m, y] = de.split('.').map(Number); return (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000; };
+  const frac = t => { const [h, m] = t.split(':').map(Number); return (h * 60 + m) / 1440; };
+  const ws = XLSX.utils.aoa_to_sheet([EXP_HEADERS]);
+  rows.forEach((r, i) => {
+    const R = i + 1;
+    r.forEach((v, c) => {
+      const ref = XLSX.utils.encode_cell({ r: R, c });
+      if ((c === 1 || c === 4) && v) ws[ref] = { t: 'n', v: serial(v), z: 'dd.mm.yyyy' };
+      else if ((c === 2 || c === 3) && v) ws[ref] = { t: 'n', v: frac(v), z: 'hh:mm' };
+      else if (v !== '') ws[ref] = { t: 's', v: String(v) };
+    });
+  });
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: EXP_HEADERS.length - 1 } });
+  ws['!cols'] = [32, 12, 8, 8, 12, 10, 20, 14, 40, 26, 11].map(w => ({ wch: w }));
+  ws['!autofilter'] = { ref: ws['!ref'] };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Termine');
+  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+/** rows (Textzeilen) als .xlsx oder .csv herunterladen. */
+async function expDownload(kind, rows, baseName, btn) {
+  const label = btn ? btn.innerHTML : '';
+  try {
+    if (kind === 'csv') {
+      expSave(new Blob([expCsv(rows)], { type: 'text/csv;charset=utf-8' }), `${baseName}.csv`);
+    } else {
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Excel wird erstellt…'; }
+      expSave(await expXlsx(rows), `${baseName}.xlsx`);
+    }
+    return true;
+  } catch (e) {
+    toast(e.message || String(e), true);
+    return false;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = label; }
+  }
+}
+
+/** Sheet „Exportieren“: Umfang anzeigen, Excel oder CSV wählen. */
+function expOpenSheet(events, scopeText) {
+  if (!expCanUse()) return toast(MSG_FORBIDDEN_APP, true);
+  if (!events.length) return toast('Keine Termine zum Exportieren.', true);
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <div class="sheet-head"><div><h2 id="sheetTitle">Termine exportieren</h2></div>${closeBtn()}</div>
+      <p class="sub">${events.length} ${events.length === 1 ? 'Termin' : 'Termine'} · ${esc(scopeText)}</p>
+      <div class="note">${icon('info', 18)}<span>Die Datei hat dieselben Spalten wie der Import. Du kannst sie in Excel bearbeiten – z. B. Daten fürs nächste Jahr ändern – und über „Termine importieren“ wieder einlesen. Die Spalte „Status“ ist nur zur Info.</span></div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn small" type="button" id="expCsv" style="flex:1">CSV</button>
+      <button class="btn primary" type="button" id="expXlsx" style="flex:2">${icon('share', 20)}Excel (.xlsx)</button>
+    </div>`);
+  bindClose();
+  const rows = events.map(expRow);
+  const name = `dienstplan-export-${todayIso()}`;
+  $('#expCsv').onclick = async e => { if (await expDownload('csv', rows, name, e.currentTarget)) { closeSheet(); toast('CSV-Datei erstellt.'); } };
+  $('#expXlsx').onclick = async e => { if (await expDownload('xlsx', rows, name, e.currentTarget)) { closeSheet(); toast('Excel-Datei erstellt.'); } };
+}
+
+const MSG_FORBIDDEN_APP = 'Dafür fehlen dir die Rechte.';

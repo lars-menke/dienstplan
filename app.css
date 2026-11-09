@@ -919,3 +919,6 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .imp-bar { width: 100%; max-width: 420px; height: 10px; border-radius: 999px; background: var(--chip); overflow: hidden; }
 .imp-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .2s; }
 .imp-errors .opt { min-height: 56px; }
+.tbl-export { min-height: 40px; font-size: 14px; padding: 0 12px; margin-bottom: 2px; }
+.tbl-filters .tbl-count { margin-left: auto; }
+.imp-template { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }

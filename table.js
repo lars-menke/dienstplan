@@ -137,6 +137,7 @@ function renderTable() {
         <select id="tfStatus"><option value="">Alle</option><option value="AKTIV" ${sel('AKTIV', tbl.filter.status)}>Aktiv</option>
           <option value="ABGESAGT" ${sel('ABGESAGT', tbl.filter.status)}>Abgesagt</option><option value="VERSCHOBEN" ${sel('VERSCHOBEN', tbl.filter.status)}>Verschoben</option></select></label>
       <span class="tbl-count" aria-live="polite">${rows.length} ${rows.length === 1 ? 'Termin' : 'Termine'}</span>
+      ${expCanUse() ? `<button type="button" class="btn small tbl-export" id="tblExport">${icon('share', 18)}Exportieren</button>` : ''}
     </div>
     <div class="tbl-scroll">
       <table class="tbl" role="grid" aria-label="Termine als Tabelle" aria-rowcount="${rows.length + 1}">
@@ -274,6 +275,7 @@ function tableBarHtml() {
     <button type="button" class="btn small" data-bulk="reactivate" ${nReact && !tbl.bulkBusy ? '' : 'disabled'}>${icon('refresh', 18)}Wieder aktivieren (${nReact})</button>
     <button type="button" class="btn small" data-bulk="category" ${dis}>${icon('tags', 18)}Kategorie setzen…</button>
     ${can('admin') ? `<button type="button" class="btn small danger-outline" data-bulk="delete" ${dis}>Löschen (${n})</button>` : ''}
+    ${expCanUse() ? `<button type="button" class="btn small" data-bulk="export" ${dis}>${icon('share', 18)}Exportieren (${n})</button>` : ''}
     <button type="button" class="btn small text" data-bulk="clear" ${dis}>Auswahl aufheben</button>
   </div>`;
 }
@@ -432,6 +434,10 @@ async function tableBulk(kind, btn) {
   const evs = [...tbl.selected].map(tableEvent).filter(Boolean);
   if (!evs.length) return;
   if (kind === 'clear') { tbl.selected.clear(); tbl.anchor = null; return renderTable(); }
+  if (kind === 'export') {
+    // ausgewählte Termine in der Reihenfolge der Ansicht
+    return expOpenSheet(tableRows().filter(ev => tbl.selected.has(ev.eventId)), 'ausgewählte Termine');
+  }
   if (kind === 'category') return tableCategorySheet(evs);
   if (kind === 'delete') {
     return confirmAct({
@@ -519,7 +525,7 @@ function tableCategorySheet(evs) {
   };
   openSheet(`<div class="sheet-scroll">
       ${grip}
-      <div class="sheet-head"><h2 id="sheetTitle">Kategorie setzen</h2>${closeBtn()}</div>
+      <div class="sheet-head"><div><h2 id="sheetTitle">Kategorie setzen</h2></div>${closeBtn()}</div>
       <p class="sub">für ${evs.length} ${evs.length === 1 ? 'Termin' : 'Termine'}</p>
       <div class="chips" role="group" aria-label="Kategorie">${categoryOptions().map(n => chip(n, n)).join('')}${chip('', 'Keine')}</div>
     </div>
@@ -610,6 +616,14 @@ function tableInit() {
       const again = listEl.querySelector(`[data-sort="${col}"]`);
       if (again) again.focus();
       return;
+    }
+    if (e.target.closest('#tblExport')) {
+      const f = tbl.filter;
+      const parts = [f.range === 'all' ? 'alle Zeiträume' : 'ab heute'];
+      if (f.cat) parts.push(f.cat === '-' ? 'ohne Kategorie' : `Kategorie ${f.cat}`);
+      if (f.status) parts.push({ AKTIV: 'nur aktive', ABGESAGT: 'nur abgesagte', VERSCHOBEN: 'nur verschobene' }[f.status]);
+      if (state.q.trim()) parts.push(`Suche „${state.q.trim()}“`);
+      return expOpenSheet(tableRows(), `wie in der Tabelle (${parts.join(', ')})`);
     }
     const bulk = e.target.closest('[data-bulk]');
     if (bulk) return tableBulk(bulk.dataset.bulk, bulk);

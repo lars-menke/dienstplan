@@ -80,9 +80,10 @@ function userInfo_(user) {
 }
 
 function handleAction_(action, data, user) {
-  checkTimezone_();
+  const calendarMode = isCalendarMode_();
+  checkTimezone_(calendarMode);
   // V3: Termine und Kategorien direkt im Google Kalender (Kalender.gs)
-  if (isCalendarMode_() && V3_ACTIONS.includes(action)) return handleActionV3_(action, data, user);
+  if (calendarMode && V3_ACTIONS.includes(action)) return handleActionV3_(action, data, user);
   switch (action) {
     case 'getData': return withAdminInfo_(getAppData_(user.name), user);
     case 'saveEvent': return saveEvent_(data, user.name);

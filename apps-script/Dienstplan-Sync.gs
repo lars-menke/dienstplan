@@ -1168,9 +1168,10 @@ function withLock_(fn) {
 }
 
 /** Script und Tabelle müssen in derselben Zeitzone laufen, sonst verrutschen Uhrzeiten. */
-function checkTimezone_() {
+function checkTimezone_(scriptOnly) {
   const scriptTz = Session.getScriptTimeZone();
-  const sheetTz = getSs_().getSpreadsheetTimeZone();
+  // scriptOnly: Kalender-Modus der App – die Tabelle zu öffnen kostet bei jeder Anfrage Zeit
+  const sheetTz = scriptOnly ? CONFIG.TIMEZONE : getSs_().getSpreadsheetTimeZone();
   const problems = [];
   if (scriptTz !== CONFIG.TIMEZONE) problems.push(`Script-Projekt steht auf ${scriptTz} (Apps Script → Projekteinstellungen → Zeitzone)`);
   if (sheetTz !== CONFIG.TIMEZONE) problems.push(`Tabelle steht auf ${sheetTz} (Datei → Einstellungen → Zeitzone)`);

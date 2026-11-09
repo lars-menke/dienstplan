@@ -125,12 +125,51 @@ function v3GetAppData_(userName) {
       if (k) usage[k] = (usage[k] || 0) + 1;
     });
     data = {
+      listedAt: Date.now(),
       events,
       categoryList: cats.list.map(c => ({ name: c.name, colorId: c.colorId, count: usage[c.name.toLowerCase()] || 0 })),
     };
     v3CachePut_(data);
   }
-  return Object.assign({}, data, { today: dateToIso_(new Date()), user: userName });
+  const out = Object.assign({}, data, { today: dateToIso_(new Date()), user: userName });
+  delete out.listedAt;
+  return out;
+}
+
+/**
+ * Nach dem Schreiben: Zwischenspeicher gezielt anpassen statt den ganzen Kalender
+ * neu zu lesen (spart den langsamsten Aufruf). Ist der Zwischenspeicher leer oder
+ * älter als 4 Minuten, wird wie gewohnt alles neu gelesen – so tauchen direkt in
+ * Google gemachte Änderungen spätestens nach ein paar Minuten auf.
+ * changed: geänderte/neue Kalendertermine (Antwort von insert/update), removedIds: gelöschte IDs.
+ */
+function v3AppDataAfterWrite_(userName, changed, removedIds, cats) {
+  const data = v3CacheGet_();
+  if (!data || !data.listedAt || Date.now() - data.listedAt > 4 * 60 * 1000) {
+    v3CacheClear_();
+    return v3GetAppData_(userName);
+  }
+  cats = cats || v3Categories_();
+  const drop = {};
+  (removedIds || []).forEach(id => { drop[id] = true; });
+  const fresh = {};
+  (changed || []).forEach(ev => {
+    if (!ev || !ev.id) return;
+    if (ev.status === 'cancelled') { drop[ev.id] = true; return; }
+    fresh[ev.id] = v3ToApp_(ev, v3Fields_(ev, cats));
+  });
+  const events = data.events.filter(e => !drop[e.eventId] && !fresh[e.eventId]);
+  Object.keys(fresh).forEach(id => { if (!drop[id]) events.push(fresh[id]); });
+  events.sort((a, b) => (a.date + (a.start || '00:00')).localeCompare(b.date + (b.start || '00:00')));
+  const usage = {};
+  events.forEach(e => {
+    const k = (e.category || '').toLowerCase();
+    if (k) usage[k] = (usage[k] || 0) + 1;
+  });
+  data.events = events;
+  data.categoryList = cats.list.map(c => ({ name: c.name, colorId: c.colorId, count: usage[c.name.toLowerCase()] || 0 }));
+  v3CachePut_(data);
+  return v3GetAppData_(userName);
 }
 
 /** Alle Termine ab 1. Januar des Vorjahres, ein Eintrag pro Serie. */
@@ -163,14 +202,14 @@ function v3SaveEvent_(data, userName) {
   return withWebLock_(() => {
     const input = validateEventInput_(data);
     const id = data.eventId || (data.ref && data.ref.eventId) || '';
-    const result = v3SaveOne_(id, input, v3Categories_(), userName);
-    v3CacheClear_();
-    return Object.assign({ message: result === 'created' ? 'Termin angelegt.' : 'Gespeichert.', warning: false },
-      v3GetAppData_(userName));
+    const cats = v3Categories_();
+    const result = v3SaveOne_(id, input, cats, userName);
+    return Object.assign({ message: result.kind === 'created' ? 'Termin angelegt.' : 'Gespeichert.', warning: false },
+      v3AppDataAfterWrite_(userName, [result.ev], [], cats));
   });
 }
 
-/** Einen Termin anlegen (ohne id) oder ändern. Gibt 'created' bzw. 'updated' zurück. */
+/** Einen Termin anlegen (ohne id) oder ändern. → { kind: 'created'|'updated', ev } */
 function v3SaveOne_(id, input, cats, userName) {
   const values = {
     subject: input.subject,
@@ -188,14 +227,12 @@ function v3SaveOne_(id, input, cats, userName) {
     const ev = v3GetEvent_(id);
     if (!ev) throw new Error('Termin nicht gefunden – er wurde inzwischen gelöscht. Bitte neu laden.');
     const f = Object.assign(v3Fields_(ev, cats), values);
-    v3Update_(ev, f, cats);
-    return 'updated';
+    return { kind: 'updated', ev: v3Update_(ev, f, cats) };
   }
   const f = Object.assign({
     status: CONFIG.STATUS.AKTIV, movedTo: '', movedToText: '', movedFrom: '', recurrence: '',
   }, values);
-  v3Insert_(f, cats);
-  return 'created';
+  return { kind: 'created', ev: v3Insert_(f, cats) };
 }
 
 function v3SetStatus_(data, userName) {
@@ -208,19 +245,21 @@ function v3SetStatus_(data, userName) {
     const cats = v3Categories_();
     const f = v3Fields_(ev, cats);
     const stamp = v3Stamp_(userName);
+    const changed = [];
+    const removed = [];
     let message;
 
     switch (status) {
       case S.ABGESAGT:
         Object.assign(f, { status: S.ABGESAGT, changed: stamp });
-        v3Update_(ev, f, cats);
+        changed.push(v3Update_(ev, f, cats));
         message = 'Termin abgesagt.';
         break;
 
       case S.AKTIV:
         // Folgetermin-Verknüpfung bleibt erhalten (der neue Termin besteht weiter)
         Object.assign(f, { status: S.AKTIV, movedToText: '', changed: stamp });
-        v3Update_(ev, f, cats);
+        changed.push(v3Update_(ev, f, cats));
         message = 'Termin ist wieder aktiv.';
         break;
 
@@ -230,13 +269,13 @@ function v3SetStatus_(data, userName) {
         const target = newTime ? `${data.newDate}T${newTime}` : data.newDate;
         if (f.movedTo && v3GetEvent_(f.movedTo)) {
           Object.assign(f, { status: S.VERSCHOBEN, movedToText: target, changed: stamp });
-          v3Update_(ev, f, cats);
+          changed.push(v3Update_(ev, f, cats));
           message = 'Als verschoben markiert (neuer Termin war schon angelegt).';
         } else {
           const follow = v3FollowUpFields_(f, data.newDate, newTime, ev.id, stamp);
           const created = v3Insert_(follow, cats);
           Object.assign(f, { status: S.VERSCHOBEN, movedTo: created.id, movedToText: target, changed: stamp });
-          v3Update_(ev, f, cats);
+          changed.push(created, v3Update_(ev, f, cats));
           message = 'Termin verschoben – der neue Termin ist angelegt.';
         }
         break;
@@ -246,6 +285,7 @@ function v3SetStatus_(data, userName) {
         // erst sichern (V3 5.3), dann löschen
         v3WriteDeleted_(ev, f, userName);
         v3Cal_(() => Calendar.Events.remove(CONFIG.CALENDAR_ID, ev.id, { sendUpdates: 'none' }));
+        removed.push(ev.id);
         message = 'Termin gelöscht.';
         break;
 
@@ -253,8 +293,7 @@ function v3SetStatus_(data, userName) {
         throw new Error(`Unbekannter Status: ${data.status}`);
     }
 
-    v3CacheClear_();
-    return Object.assign({ message, warning: false }, v3GetAppData_(userName));
+    return Object.assign({ message, warning: false }, v3AppDataAfterWrite_(userName, changed, removed, cats));
   });
 }
 
@@ -269,6 +308,7 @@ function v3SaveEvents_(data, userName) {
     let created = 0;
     let updated = 0;
     const failed = [];
+    const changedEvents = [];
     items.forEach((item, index) => {
       if (Date.now() - t0 > V3.MAX_RUNTIME_MS) {
         failed.push({ index, error: 'Zeitlimit erreicht – bitte diesen Termin erneut senden.' });
@@ -277,14 +317,15 @@ function v3SaveEvents_(data, userName) {
       try {
         const input = validateEventInput_(item || {});
         const r = v3SaveOne_((item && item.eventId) || '', input, cats, userName);
-        if (r === 'created') created++; else updated++;
+        changedEvents.push(r.ev);
+        if (r.kind === 'created') created++; else updated++;
       } catch (e) {
         failed.push({ index, error: errMsg_(e) });
       }
     });
-    v3CacheClear_();
     const message = `${created} angelegt, ${updated} geändert${failed.length ? `, ${failed.length} Fehler` : ''}.`;
-    return Object.assign({ created, updated, failed, message, warning: failed.length > 0 }, v3GetAppData_(userName));
+    return Object.assign({ created, updated, failed, message, warning: failed.length > 0 },
+      v3AppDataAfterWrite_(userName, changedEvents, [], cats));
   });
 }
 
@@ -302,6 +343,7 @@ function v3SetStatusBulk_(data, userName) {
     const stamp = v3Stamp_(userName);
     let updated = 0;
     const failed = [];
+    const changedEvents = [];
     ids.forEach((id, index) => {
       if (Date.now() - t0 > V3.MAX_RUNTIME_MS) { failed.push({ index, error: 'Zeitlimit erreicht.' }); return; }
       try {
@@ -311,16 +353,16 @@ function v3SetStatusBulk_(data, userName) {
         f.status = status;
         f.changed = stamp;
         if (status === S.AKTIV) f.movedToText = '';
-        v3Update_(ev, f, cats);
+        changedEvents.push(v3Update_(ev, f, cats));
         updated++;
       } catch (e) {
         failed.push({ index, error: errMsg_(e) });
       }
     });
-    v3CacheClear_();
     const word = status === S.ABGESAGT ? 'abgesagt' : 'wieder aktiv';
     const message = `${updated} ${updated === 1 ? 'Termin' : 'Termine'} ${word}${failed.length ? `, ${failed.length} Fehler` : ''}.`;
-    return Object.assign({ updated, failed, message, warning: failed.length > 0 }, v3GetAppData_(userName));
+    return Object.assign({ updated, failed, message, warning: failed.length > 0 },
+      v3AppDataAfterWrite_(userName, changedEvents, [], cats));
   });
 }
 
@@ -346,7 +388,8 @@ function v3SaveCategoryList_(list) {
 
 /** Gleiche Struktur wie loadCategories_(): byName, byColor, canonical, names, list. */
 function v3Categories_(list) {
-  const result = { byName: {}, byColor: {}, canonical: {}, names: [], list: [] };
+  // renames: einmal lesen statt pro Termin (Script-Eigenschaften sind langsam)
+  const result = { byName: {}, byColor: {}, canonical: {}, names: [], list: [], renames: v3Renames_() };
   const colorCount = {};
   (list || v3LoadCategoryList_()).forEach(c => {
     const name = String(c.name || '').trim();
@@ -483,7 +526,7 @@ function v3Fields_(ev, cats) {
   const times = v3Times_(ev);
   const rrule = (ev.recurrence || []).find(l => /^RRULE:/i.test(l)) || '';
   const base = Object.assign({ location: ev.location || '', recurrence: rrule }, times);
-  const renames = v3Renames_();
+  const renames = cats.renames || {};
   const mapCat = name => {
     if (!name) return '';
     const renamed = renames[name.toLowerCase()];

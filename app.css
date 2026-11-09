@@ -840,4 +840,23 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .tbl-bar .btn.danger-outline { border: 1px solid var(--danger); color: var(--danger); background: transparent; }
 .tbl-bar .btn.text { color: var(--text-2); }
 .field select:focus-visible { outline: 0; border: 2px solid var(--focus); padding: 0 11px; }
-@media (max-width: 480px) { .rep-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Wiederholung im Formular */
+.rep-box {
+  margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.rep-box legend { padding: 0 4px; }
+.rep-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.rep-box select, .rep-box input[type="number"], .rep-box input[type="date"] {
+  height: 46px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text); font-size: 16px; min-width: 0;
+}
+.rep-box select { flex: 1 1 180px; }
+.rep-box input[type="number"] { width: 76px; text-align: center; }
+.rep-box input[type="date"] { flex: 1 1 160px; -webkit-appearance: none; appearance: none; line-height: 44px; }
+.rep-box select:focus-visible, .rep-box input:focus-visible { outline: 0; border: 2px solid var(--focus); padding: 0 11px; }
+.rep-every, .rep-word { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--text-2); }
+.chip.day { min-width: 46px; justify-content: center; padding: 0 10px; }
+.chip.day[aria-pressed="true"] { padding: 0 9px; }
+.rep-preview { font-size: 13px; color: var(--text-2); }

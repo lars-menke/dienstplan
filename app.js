@@ -1570,6 +1570,7 @@ function openMore() {
       <div class="group-box">
         <button class="opt" type="button" data-admin="Kategorien">${icon('tags', 20)}<span class="grow">Kategorien</span><span class="count">${state.categoryList.length || ''}</span>${icon('chevronRight', 18)}</button>
         <button class="opt" type="button" data-admin="Zugangscodes">${icon('key', 20)}<span class="grow">Zugangscodes</span><span class="count">${state.codeCount || ''}</span>${icon('chevronRight', 18)}</button>
+        <button class="opt" type="button" data-admin="Import">${icon('plus', 20)}<span class="grow">Termine importieren</span>${icon('chevronRight', 18)}</button>
       </div>
     </div>` : ''}
 
@@ -1583,7 +1584,7 @@ function openMore() {
   }));
   sheetEl.querySelectorAll('[data-admin]').forEach(b => (b.onclick = () => {
     closeSheet();
-    openPage(b.dataset.admin === 'Kategorien' ? 'categories' : 'codes');
+    openPage({ Kategorien: 'categories', Zugangscodes: 'codes', Import: 'import' }[b.dataset.admin]);
   }));
   $('#xLogout').onclick = () => confirmAct({
     title: 'Abmelden?',
@@ -1609,6 +1610,7 @@ const ROLE_INFO = {
 const realColor = id => COLOR_HEX.light[String(id)] || '#9e9e9e';
 
 function openPage(name) {
+  if (name === 'import' && !state.busy) impReset();
   pushNav('page');
   state.page = name;
   appEl.hidden = true;
@@ -1624,6 +1626,7 @@ function closePage(fromHistory) {
   state.page = null;
   pageEl.hidden = true;
   pageEl.innerHTML = '';
+  pageEl.classList.remove('wide');
   appEl.hidden = false;
   render();
   setTimeout(() => $('#btnMore').focus(), 30);
@@ -1648,6 +1651,7 @@ function pageShell(title, body, fab) {
 function renderPage() {
   if (state.page === 'categories') renderCategoriesPage();
   if (state.page === 'codes') renderCodesPage();
+  if (state.page === 'import') renderImportPage();
   const back = $('#pageBack');
   if (back) back.onclick = closePage;
 }

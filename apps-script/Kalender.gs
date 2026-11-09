@@ -23,7 +23,10 @@ const V3 = {
   PROP_RENAMES: 'KATEGORIEN_V3_UMBENENNUNGEN', // alt (klein) → neu, bis der Kalender nachgezogen ist
 
   CACHE_KEY: 'dpv3data',
-  CACHE_SECONDS: 300,
+  CACHE_SECONDS: 300,          // so alt darf die Liste werden, dann werden die Änderungen nachgeholt
+  CACHE_KEEP_SECONDS: 6 * 3600, // so lange bleibt die Liste gespeichert (Höchstwert von Google)
+  FULL_READ_MS: 6 * 3600 * 1000, // spätestens dann wird wieder komplett gelesen
+  LIST_FIELDS: 'nextPageToken,items(id,status,summary,description,location,start,end,colorId,recurrence,recurringEventId,eventType,extendedProperties)',
   CACHE_CHUNK_CHARS: 40000, // < 90 KB auch bei Umlauten (UTF-8)
 
   MAX_RUNTIME_MS: 5 * 60 * 1000,
@@ -101,8 +104,7 @@ function handleActionV3_(action, data, user) {
   switch (action) {
     case 'getData':
       // fresh: von Hand aktualisiert (Herunterziehen/Knopf) → direkt aus dem Kalender lesen
-      if (data && data.fresh) v3CacheClear_();
-      return withAdminInfo_(v3GetAppData_(user.name), user);
+      return withAdminInfo_(v3GetAppData_(user.name, !!(data && data.fresh)), user);
     case 'saveEvent': return v3SaveEvent_(data, user.name);
     case 'setStatus': return v3SetStatus_(data, user.name);
     case 'syncAll': return Object.assign({ message: V3.MSG_SYNC_OBSOLETE }, v3GetAppData_(user.name));
@@ -116,45 +118,60 @@ function handleActionV3_(action, data, user) {
 
 /* --- Lesen --- */
 
-function v3GetAppData_(userName) {
+/**
+ * Terminliste für die App. Gelesen wird so wenig wie möglich:
+ * - Zwischenspeicher jünger als 5 Minuten → direkt daraus
+ * - älter, oder von Hand aktualisiert (fresh) → nur die seit dem letzten Lesen
+ *   geänderten Termine aus dem Kalender holen (updatedMin, ein schneller Aufruf)
+ * - kein Zwischenspeicher oder letztes komplettes Lesen > 6 Stunden → alles lesen
+ */
+function v3GetAppData_(userName, fresh) {
   let data = v3CacheGet_();
-  // nach dem Speichern wird der Zwischenspeicher nur angepasst – spätestens nach 5 Minuten neu lesen
-  if (data && (!data.listedAt || Date.now() - data.listedAt > V3.CACHE_SECONDS * 1000)) data = null;
+  const now = Date.now();
+  if (data && (!data.fullAt || !data.listedAt || now - data.fullAt > V3.FULL_READ_MS)) data = null;
+  if (data && (fresh || now - data.listedAt > V3.CACHE_SECONDS * 1000)) {
+    data = v3CatchUp_(data);
+    if (data) v3CachePut_(data);
+  }
   if (!data) {
+    const started = Date.now();
     const cats = v3Categories_();
-    const events = v3ListEvents_().map(ev => v3ToApp_(ev, v3Fields_(ev, cats)));
-    events.sort((a, b) => (a.date + (a.start || '00:00')).localeCompare(b.date + (b.start || '00:00')));
-    const usage = {};
-    events.forEach(e => {
-      const k = (e.category || '').toLowerCase();
-      if (k) usage[k] = (usage[k] || 0) + 1;
-    });
-    data = {
-      listedAt: Date.now(),
-      events,
-      categoryList: cats.list.map(c => ({ name: c.name, colorId: c.colorId, count: usage[c.name.toLowerCase()] || 0 })),
-    };
+    data = v3MergeEvents_({ events: [] }, v3ListEvents_({ forApp: true }), [], cats);
+    data.fullAt = started;
+    data.listedAt = started;
     v3CachePut_(data);
   }
   const out = Object.assign({}, data, { today: dateToIso_(new Date()), user: userName });
   delete out.listedAt;
+  delete out.fullAt;
   return out;
 }
 
-/**
- * Nach dem Schreiben: Zwischenspeicher gezielt anpassen statt den ganzen Kalender
- * neu zu lesen (spart den langsamsten Aufruf). Ist der Zwischenspeicher leer oder
- * älter als 4 Minuten, wird wie gewohnt alles neu gelesen – so tauchen direkt in
- * Google gemachte Änderungen spätestens nach ein paar Minuten auf.
- * changed: geänderte/neue Kalendertermine (Antwort von insert/update), removedIds: gelöschte IDs.
- */
-function v3AppDataAfterWrite_(userName, changed, removedIds, cats) {
-  const data = v3CacheGet_();
-  if (!data || !data.listedAt || Date.now() - data.listedAt > 4 * 60 * 1000) {
-    v3CacheClear_();
-    return v3GetAppData_(userName);
+/** Holt nur die Änderungen seit dem letzten Lesen nach. null → bitte komplett lesen. */
+function v3CatchUp_(data) {
+  const started = Date.now();
+  let items;
+  try {
+    // 2 Minuten Puffer gegen Uhrzeit-Unterschiede; doppelt Geholtes schadet nicht
+    items = v3ListEvents_({ forApp: true, updatedMin: new Date(data.listedAt - 2 * 60 * 1000).toISOString(), raw: true });
+  } catch (e) {
+    Logger.log('Nachholen fehlgeschlagen, lese komplett: ' + errMsg_(e));
+    return null;
   }
-  cats = cats || v3Categories_();
+  const changed = [];
+  const removed = [];
+  items.forEach(ev => {
+    if (ev.recurringEventId) return; // Ausnahmen einer Serie: wie beim kompletten Lesen ignorieren
+    if (ev.status === 'cancelled' || (ev.eventType || 'default').toLowerCase() !== 'default') removed.push(ev.id);
+    else changed.push(ev);
+  });
+  const out = v3MergeEvents_(data, changed, removed, v3Categories_());
+  out.listedAt = started;
+  return out;
+}
+
+/** Termine in die gespeicherte Liste einarbeiten, sortieren, Kategorien zählen. */
+function v3MergeEvents_(data, changed, removedIds, cats) {
   const drop = {};
   (removedIds || []).forEach(id => { drop[id] = true; });
   const fresh = {};
@@ -163,7 +180,7 @@ function v3AppDataAfterWrite_(userName, changed, removedIds, cats) {
     if (ev.status === 'cancelled') { drop[ev.id] = true; return; }
     fresh[ev.id] = v3ToApp_(ev, v3Fields_(ev, cats));
   });
-  const events = data.events.filter(e => !drop[e.eventId] && !fresh[e.eventId]);
+  const events = (data.events || []).filter(e => !drop[e.eventId] && !fresh[e.eventId]);
   Object.keys(fresh).forEach(id => { if (!drop[id]) events.push(fresh[id]); });
   events.sort((a, b) => (a.date + (a.start || '00:00')).localeCompare(b.date + (b.start || '00:00')));
   const usage = {};
@@ -171,26 +188,47 @@ function v3AppDataAfterWrite_(userName, changed, removedIds, cats) {
     const k = (e.category || '').toLowerCase();
     if (k) usage[k] = (usage[k] || 0) + 1;
   });
-  data.events = events;
-  data.categoryList = cats.list.map(c => ({ name: c.name, colorId: c.colorId, count: usage[c.name.toLowerCase()] || 0 }));
-  v3CachePut_(data);
+  return Object.assign({}, data, {
+    events,
+    categoryList: cats.list.map(c => ({ name: c.name, colorId: c.colorId, count: usage[c.name.toLowerCase()] || 0 })),
+  });
+}
+
+/**
+ * Nach dem Schreiben: die geschriebenen Termine direkt in die gespeicherte Liste
+ * übernehmen statt den Kalender neu zu lesen.
+ * changed: geänderte/neue Kalendertermine (Antwort von insert/update), removedIds: gelöschte IDs.
+ */
+function v3AppDataAfterWrite_(userName, changed, removedIds, cats) {
+  const data = v3CacheGet_();
+  if (data && data.fullAt && data.listedAt) v3CachePut_(v3MergeEvents_(data, changed, removedIds, cats || v3Categories_()));
   return v3GetAppData_(userName);
 }
 
-/** Alle Termine ab 1. Januar des Vorjahres, ein Eintrag pro Serie. */
-function v3ListEvents_() {
+/**
+ * Alle Termine ab 1. Januar des Vorjahres, ein Eintrag pro Serie.
+ * opts.forApp: nur die Felder, die die App braucht (deutlich weniger Daten)
+ * opts.updatedMin: nur seit diesem Zeitpunkt geänderte (inkl. gelöschte) Termine
+ * opts.raw: ungefiltert zurückgeben (gelöschte, Ausnahmen, Sondertypen inklusive)
+ */
+function v3ListEvents_(opts) {
+  opts = opts || {};
   const timeMin = new Date(new Date().getFullYear() - 1, 0, 1).toISOString();
   const out = [];
   let pageToken;
   do {
-    const resp = v3Cal_(() => Calendar.Events.list(CONFIG.CALENDAR_ID, {
+    const params = {
       timeMin,
       singleEvents: false,
-      showDeleted: false,
+      showDeleted: !!opts.updatedMin,
       maxResults: 2500,
       pageToken,
-    }));
+    };
+    if (opts.forApp) params.fields = V3.LIST_FIELDS;
+    if (opts.updatedMin) params.updatedMin = opts.updatedMin;
+    const resp = v3Cal_(() => Calendar.Events.list(CONFIG.CALENDAR_ID, params));
     (resp.items || []).forEach(ev => {
+      if (opts.raw) { out.push(ev); return; }
       if (ev.status === 'cancelled') return;
       if (ev.recurringEventId) return; // einzelne Ausnahmen einer Serie: bewusst nicht gesondert (V3 2.5)
       if ((ev.eventType || 'default').toLowerCase() !== 'default') return;
@@ -779,7 +817,7 @@ function v3CachePut_(data) {
     const obj = {};
     for (let i = 0; i < n; i++) obj[`${V3.CACHE_KEY}_${i}`] = json.slice(i * V3.CACHE_CHUNK_CHARS, (i + 1) * V3.CACHE_CHUNK_CHARS);
     obj[`${V3.CACHE_KEY}_n`] = String(n);
-    CacheService.getScriptCache().putAll(obj, V3.CACHE_SECONDS);
+    CacheService.getScriptCache().putAll(obj, V3.CACHE_KEEP_SECONDS);
   } catch (e) {
     Logger.log('Cache nicht gespeichert: ' + errMsg_(e));
   }

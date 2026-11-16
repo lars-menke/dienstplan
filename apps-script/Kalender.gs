@@ -13,6 +13,7 @@
  *   backupToSheet()                 Backup sofort (auch im Menü „Dienstplan“)
  *   restoreFromBackup()             Menü „Termin aus Backup wiederherstellen…“
  *   aufraeumenEtappe3()             einmalig nach dem Update auf 6.0 (alte Trigger/Eigenschaften weg)
+ *   erinnerungenBeiAbsagenEntfernen() einmalig: Erinnerungen aus schon abgesagten/verschobenen Terminen
  ******************************************************/
 
 const V3 = {
@@ -717,8 +718,34 @@ function v3Resource_(f, cats) {
   return res;
 }
 
+/* Erinnerungen: Bei ABGESAGT und VERSCHOBEN (der alte Termin bleibt markiert stehen) werden die
+ * Erinnerungen entfernt; die bisherigen merkt sich das Zusatzfeld `rem`, „Wieder aktivieren“ stellt
+ * sie wieder her. Google speichert Erinnerungen je Person – das wirkt für das Konto, unter dem das
+ * Script läuft; Abonnenten behalten ihre eigenen Standard-Erinnerungen des Kalenders. */
+const V3_REMINDERS_OFF = { useDefault: false, overrides: [] };
+
+function v3IsInactive_(status) {
+  return status === CONFIG.STATUS.ABGESAGT || status === CONFIG.STATUS.VERSCHOBEN;
+}
+
+function v3RemindersOff_(r) {
+  return !!r && r.useDefault === false && !(r.overrides && r.overrides.length);
+}
+
+/** Erinnerungen als Text fürs Zusatzfeld (höchstens 1024 Zeichen, sonst Standard-Erinnerungen). */
+function v3RemText_(reminders) {
+  const s = JSON.stringify(reminders || { useDefault: true });
+  return s.length > 1000 ? JSON.stringify({ useDefault: true }) : s;
+}
+
 function v3Insert_(f, cats) {
-  return v3Cal_(() => Calendar.Events.insert(v3Resource_(f, cats), CONFIG.CALENDAR_ID, { sendUpdates: 'none' }));
+  const res = v3Resource_(f, cats);
+  if (v3IsInactive_(f.status)) {
+    // z. B. Wiederherstellen eines abgesagten Termins: gleich ohne Erinnerungen anlegen
+    res.reminders = V3_REMINDERS_OFF;
+    res.extendedProperties.private.rem = v3RemText_({ useDefault: true });
+  }
+  return v3Cal_(() => Calendar.Events.insert(res, CONFIG.CALENDAR_ID, { sendUpdates: 'none' }));
 }
 
 /** Vollständig aktualisieren; Erinnerungen, Teilnehmer, EXDATE usw. bleiben erhalten. */
@@ -726,8 +753,49 @@ function v3Update_(existing, f, cats) {
   const payload = v3Resource_(f, cats);
   const merged = mergeForUpdate_(existing, payload);
   const shared = existing.extendedProperties && existing.extendedProperties.shared;
-  merged.extendedProperties = shared ? { shared, private: payload.extendedProperties.private } : { private: payload.extendedProperties.private };
+  const priv = payload.extendedProperties.private;
+  const oldPriv = (existing.extendedProperties && existing.extendedProperties.private) || {};
+  if (v3IsInactive_(f.status)) {
+    // bisherige Erinnerungen nur beim ersten Abschalten merken
+    priv.rem = oldPriv.rem ? oldPriv.rem : v3RemText_(existing.reminders);
+    merged.reminders = V3_REMINDERS_OFF;
+  } else if (oldPriv.rem) {
+    // wieder aktiv: gemerkte Erinnerungen zurück
+    try {
+      merged.reminders = JSON.parse(oldPriv.rem);
+    } catch (e) {
+      merged.reminders = { useDefault: true };
+    }
+  }
+  merged.extendedProperties = shared ? { shared, private: priv } : { private: priv };
   return v3Cal_(() => Calendar.Events.update(merged, CONFIG.CALENDAR_ID, existing.id, { sendUpdates: 'none' }));
+}
+
+/**
+ * Einmalig im Editor: Erinnerungen aus allen schon abgesagten bzw. verschobenen Terminen entfernen.
+ * Bricht nach 5 Minuten sauber ab – dann einfach erneut starten.
+ */
+function erinnerungenBeiAbsagenEntfernen() {
+  const t0 = Date.now();
+  const cats = v3Categories_();
+  let changed = 0;
+  let done = true;
+  for (const ev of v3ListEvents_()) {
+    if (Date.now() - t0 > V3.MAX_RUNTIME_MS) { done = false; break; }
+    const f = v3Fields_(ev, cats);
+    if (!v3IsInactive_(f.status) || v3RemindersOff_(ev.reminders)) continue;
+    try {
+      v3Update_(ev, f, cats);
+      changed++;
+    } catch (e) {
+      Logger.log(`Nicht geändert (${ev.id}, ${f.subject}): ${errMsg_(e)}`);
+    }
+  }
+  v3CacheClear_();
+  const msg = `Erinnerungen entfernt bei ${changed} abgesagten/verschobenen Terminen.` +
+    (done ? '' : ' Zeitlimit erreicht – bitte erinnerungenBeiAbsagenEntfernen() erneut starten.');
+  Logger.log(msg);
+  return msg;
 }
 
 /** Termin holen; null, wenn es ihn nicht (mehr) gibt. */

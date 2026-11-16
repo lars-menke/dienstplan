@@ -212,6 +212,7 @@ Geliefert werden alle Termine ab **1. Januar des Vorjahres**, ein Eintrag pro Se
 | `movedFrom` | `<eventId>` | beim Folgetermin: Ursprung |
 | `changed` | `05.11.2026 18:12 · Lars` | letzte Änderung über die App |
 | `sync` | ISO-Zeit | wann das Script zuletzt geschrieben hat (spätere Änderung kam direkt aus Google) |
+| `rem` | `{"useDefault":true}` | gemerkte Erinnerungen, solange der Termin abgesagt/verschoben ist |
 
 Titel und Beschreibung werden **immer aus den Zusatzfeldern neu gebaut**.
 
@@ -244,6 +245,7 @@ Siehe Kapitel 17: `DataSheet` (nachts alle Termine), `Categories` (Kategorien), 
 ```
 
 - Der neue Termin bekommt in der Beschreibung „(verschoben vom 12.11.2026)“; ohne neue Uhrzeit übernimmt er Uhrzeit und Dauer. Beide Termine sind über `movedTo`/`movedFrom` verknüpft.
+- **Erinnerungen:** Abgesagte Termine und der alte, als verschoben markierte Termin haben keine Erinnerungen mehr (der neue Termin hat die normalen). Die bisherigen Erinnerungen merkt sich das Zusatzfeld `rem`; „Wieder aktivieren“ stellt sie wieder her. Google speichert Erinnerungen je Person – das wirkt für das Konto, unter dem das Script läuft. Wer den Kalender abonniert hat, behält seine eigenen Standard-Erinnerungen für diesen Kalender.
 - Wieder aktivieren eines verschobenen Termins: Der neue Termin bleibt bestehen (Hinweis per Bestätigung).
 - Serientermine: Änderungen gelten für die ganze Serie.
 - Absagen ist der Normalfall, Löschen die Ausnahme.
@@ -572,7 +574,7 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 
 **Sheet-Menü „📅 Dienstplan“:** Termin aus Backup wiederherstellen… · Backup jetzt erstellen · 🔑 Zugangscode erstellen… (mit Rolle) · 🔑 Zugangscodes verwalten… (Übersicht, Rolle, sperren, entsperren, gesperrte löschen) · 📱 Link der App-Schnittstelle anzeigen. Der frühere Sheet-Sync (15-Minuten-Sync, Import, Cleanup, Hard Delete, Sheet einrichten, Kategorien-Vorschläge) ist seit Schnittstelle 6.0 entfernt.
 
-**Editor-Funktionen:** `enableNightlyBackup()` / `disableNightlyBackup()` · `backupToSheet()` · `aufraeumenEtappe3()` (einmalig nach dem Update auf 6.0: alte Trigger und Eigenschaft `DATENQUELLE` entfernen) · `migrateCodesV2()` (alte Klartext-Codes → Hash-Modell; erledigt) · `setAdmin(name)` (Code zum Admin machen).
+**Editor-Funktionen:** `enableNightlyBackup()` / `disableNightlyBackup()` · `backupToSheet()` · `aufraeumenEtappe3()` (einmalig nach dem Update auf 6.0: alte Trigger und Eigenschaft `DATENQUELLE` entfernen) · `erinnerungenBeiAbsagenEntfernen()` (einmalig nach 6.0.1: Erinnerungen aus schon abgesagten/verschobenen Terminen entfernen) · `migrateCodesV2()` (alte Klartext-Codes → Hash-Modell; erledigt) · `setAdmin(name)` (Code zum Admin machen).
 
 ---
 
@@ -686,4 +688,5 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 09.11.2026 | V3 Etappe 2: nächtliches Backup, Blattschutz, Blatt „Gelöscht“, Wiederherstellen, Menü „📅 Dienstplan“ (5.1) |
 | 09.11.2026 | V3 Etappe 4: Tabellenansicht, Wiederholungen im Formular (n-ter Wochentag, Ende), „Letzte Änderung“ immer gefüllt (5.2, Cache bis `dienstplan-v11`) |
 | 09.11.2026 | V3 Etappe 3: alter Sheet-Weg, 15-Minuten-Sync, Marker und `LastSyncHash` entfernt, Schalter `DATENQUELLE` entfällt; V3 in diese Spezifikation eingearbeitet (6.0) |
+| 16.11.2026 | Abgesagte und verschobene Termine ohne Erinnerungen, Wieder aktivieren stellt sie her (Schnittstelle 6.0.1) |
 | 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), dazu Export aus der Tabelle und Vorlage (nur Admin), Cache `dienstplan-v12` |

@@ -459,12 +459,14 @@ Der Titel ist ein zweizeiliger Schriftzug – auf der Anmeldung und in der Kopfz
 | `--off` / `--off-bg` / `--off-title` | `#616161` / `#ececea` / `#6b6b6b` | `#9aa5c4` / `#1b2547` / `#8d98b8` | Abgesagt |
 | `--danger` | `#b3261e` | `#ff7b72` | Löschen |
 | `--ok` / `--ok-bg` / `--ok-ink` | `#2e7d32` / `#e8f5e9` / `#1b5e20` | `#5fd38a` / `#123a26` / `#8fe3a8` | „Im Kalender“, „Aktiv“ |
-| `--toast` | `#232323` | `#233166` | Toast |
+| `--toast` / `--toast-ink` | `#1b1b1b` / `#ffffff` | `#eef1f8` / `#0b1530` | Toast: im hellen Schema dunkel, im dunklen hell (Kontrast zur Seite ≥ 15:1) |
+| `--toast-icon` | `#8fe3a8` | `#1b7a3d` | Haken im Erfolgs-Toast |
+| `--toast-err` / `--toast-err-ink` | `#b3261e` / `#ffffff` | `#ff7b72` / `#0b1530` | Fehler-Toast |
 | `--offline-bg` / `-ink` | `#fff6d6` / `#5c4a00` | `#2f2c0e` / `#f2e58a` | Offline-Streifen |
 | `--role-admin-bg` / `-ink` | `#1b1b1b` / `#ffffff` | `#e8ff2b` / `#0b1530` | Badge Admin |
 | `--role-write-bg` / `-ink` | `#e3f2fd` / `#0d47a1` | `#16305e` / `#9cc4ff` | Badge Schreiben |
 | `--swipe-cancel` | `#5a5a5a` | `#3b4a7a` | Wisch-Hintergrund Absagen |
-| `--undo-ink` | `#ffcdd2` | `#e8ff2b` | „Rückgängig“ im Toast |
+| `--undo-ink` | `#ffcdd2` | `#0b1530` | „Rückgängig“ im Toast |
 
 Alle Text-/Hintergrund-Paare erreichen mindestens **4,5:1**.
 
@@ -487,7 +489,7 @@ Alle Text-/Hintergrund-Paare erreichen mindestens **4,5:1**.
 | Formularfelder | 46 px, Radius 10 px, 16 px Schrift, Fokus mit 2-px-Rahmen in Akzentfarbe |
 | Schalter | 46×28 px, Rolle `switch` |
 | Chips | Kategorie: 40 px, Radius 10, Farbpunkt; Vorlage: Pille, Auswahl in Akzent |
-| Toast | unten, 3 s (Erfolg) bzw. 6 s (Fehler, Rückgängig), optional mit Aktionsknopf |
+| Toast | **oben** mittig (unter der Statusleiste, max. 520 px), immer mit Symbol (Haken bzw. Hinweis), 15 px/600, Schatten; 3 s (Erfolg) bzw. 6 s (Fehler, Rückgängig), optional mit Aktionsknopf; Fehler mit `role="alert"` |
 
 Seitenrand 16 px, Inhalt max. 680 px breit (Sheets 640 px).
 
@@ -686,4 +688,5 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 09.11.2026 | V3 Etappe 2: nächtliches Backup, Blattschutz, Blatt „Gelöscht“, Wiederherstellen, Menü „📅 Dienstplan“ (5.1) |
 | 09.11.2026 | V3 Etappe 4: Tabellenansicht, Wiederholungen im Formular (n-ter Wochentag, Ende), „Letzte Änderung“ immer gefüllt (5.2, Cache bis `dienstplan-v11`) |
 | 09.11.2026 | V3 Etappe 3: alter Sheet-Weg, 15-Minuten-Sync, Marker und `LastSyncHash` entfernt, Schalter `DATENQUELLE` entfällt; V3 in diese Spezifikation eingearbeitet (6.0) |
+| 17.11.2026 | Toast oben und kontraststark (hell → dunkel, dunkel → hell), immer mit Symbol; Cache `dienstplan-v13` |
 | 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), dazu Export aus der Tabelle und Vorlage (nur Admin), Cache `dienstplan-v12` |

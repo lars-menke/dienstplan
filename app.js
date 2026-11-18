@@ -2000,17 +2000,15 @@ let toastTimer;
 function toast(msg, isErr, action) {
   const t = $('#toast');
   clearTimeout(toastTimer);
+  // immer mit Symbol: Haken bei Erfolg, Hinweis bei Fehler
+  t.innerHTML = `${icon(isErr ? 'info' : 'check', 20, 2.5)}<span class="t-msg"></span>${action ? '<button class="t-btn" type="button"></button>' : ''}`;
+  t.querySelector('.t-msg').textContent = msg;
   if (action) {
-    t.innerHTML = `${icon('check', 20, 2.5)}<span class="t-msg"></span><button class="t-btn" type="button"></button>`;
-    t.querySelector('.t-msg').textContent = msg;
     const b = t.querySelector('.t-btn');
     b.textContent = action.label;
     b.onclick = () => { hideToast(); action.onClick(); };
-    t.className = 'toast show has-action' + (isErr ? ' err' : '');
-  } else {
-    t.textContent = msg;
-    t.className = 'toast show' + (isErr ? ' err' : '');
   }
+  t.className = 'toast show' + (action ? ' has-action' : '') + (isErr ? ' err' : '');
   t.setAttribute('role', isErr ? 'alert' : 'status');
   toastTimer = setTimeout(hideToast, action ? 6000 : isErr ? 6000 : 3000);
 }

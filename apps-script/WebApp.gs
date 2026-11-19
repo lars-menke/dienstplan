@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '6.0.1 (ohne Erinnerungen bei Absage)',
+  VERSION: '6.2 (Entwürfe)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -118,6 +118,8 @@ function requiredRole_(action, data) {
     case 'saveEvents':
     case 'setStatusBulk':
       return 'write';
+    case 'publishEvents':
+      return 'admin';
     case 'setStatus':
       return normalizeStatus_(data.status) === CONFIG.STATUS.LOESCHEN ? 'admin' : 'write';
     case 'syncAll':

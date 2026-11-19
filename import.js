@@ -30,13 +30,14 @@ const imp = {
   wb: null, sheetNames: [], sheet: '',
   headers: [], rows: [], mapping: {}, autoNote: '',
   items: [], cats: {},   // cats: Name (klein) → { name, mode: 'new'|'none', colorId }
+  draft: true,           // als Entwurf importieren (erst nach Freigabe für alle sichtbar)
   progress: 0, total: 0, result: null,
 };
 
 function impReset() {
   Object.assign(imp, {
     step: 1, fileName: '', kind: '', loading: '', error: '', wb: null, sheetNames: [], sheet: '',
-    headers: [], rows: [], mapping: {}, autoNote: '', items: [], cats: {}, progress: 0, total: 0, result: null,
+    headers: [], rows: [], mapping: {}, autoNote: '', items: [], cats: {}, progress: 0, total: 0, result: null, draft: true,
   });
 }
 
@@ -497,6 +498,10 @@ function impStep3Html() {
         <th class="c-sel"><span class="sr-only">Übernehmen</span></th><th>Prüfung</th><th>Datum</th><th>Zeit</th><th>Titel</th><th>Ort</th><th>Kategorie</th><th>Hinweis</th>
       </tr></thead><tbody>${rows || `<tr><td colspan="8" class="tbl-empty">Keine Termine in der Datei gefunden.</td></tr>`}</tbody></table>
     </div>
+    <label class="switch-row imp-draft">
+      <span>Als Entwurf importieren<small class="switch-sub">Die Mannschaft sieht die Termine erst, wenn du sie freigibst – so kannst du z. B. das nächste Jahr in Ruhe vorbereiten.</small></span>
+      <span class="switch"><input type="checkbox" id="impDraft" role="switch" ${imp.draft ? 'checked' : ''}><span class="track"></span><span class="knob"></span></span>
+    </label>
     <div class="row-btns">
       <button class="btn small" type="button" id="impBack2" style="flex:1">${imp.kind === 'ics' ? 'Andere Datei' : 'Zurück zur Zuordnung'}</button>
       <button class="btn primary" type="button" id="impGo" style="flex:2" ${sel ? '' : 'disabled'}>${sel} ${sel === 1 ? 'Termin' : 'Termine'} importieren</button>
@@ -515,7 +520,8 @@ function impStep4Html() {
   const r = imp.result;
   return `<div class="imp-done" role="status">
       ${icon(r.failed.length ? 'info' : 'check', 32, 2.5)}
-      <h2>${r.created} angelegt, ${r.skipped} übersprungen, ${r.failed.length} ${r.failed.length === 1 ? 'Fehler' : 'Fehler'}</h2>
+      <h2>${r.created} ${r.draft ? 'als Entwurf ' : ''}angelegt, ${r.skipped} übersprungen, ${r.failed.length} Fehler</h2>
+      ${r.draft && r.created ? '<span class="small-note">Die Termine sind noch nicht für die Mannschaft sichtbar. Freigeben: in der Liste oben „Freigeben…“, in den Details eines Termins oder in der Tabelle.</span>' : ''}
       ${r.catsCreated ? `<span class="small-note">${r.catsCreated} neue ${r.catsCreated === 1 ? 'Kategorie' : 'Kategorien'} angelegt.</span>` : ''}
     </div>
     ${r.failed.length ? `<div class="group-box imp-errors">${r.failed.map(f => `
@@ -583,6 +589,8 @@ function impBind() {
   };
   const go = $('#impGo');
   if (go) go.onclick = impRun;
+  const dr = $('#impDraft');
+  if (dr) dr.onchange = () => { imp.draft = dr.checked; };
   const again = $('#impAgain');
   if (again) again.onclick = () => { impReset(); renderImportPage(); };
   const done = $('#impClose');
@@ -673,7 +681,7 @@ async function impRun() {
   imp.progress = 0;
   renderImportPage();
 
-  const result = { created: 0, skipped, failed: [], catsCreated: 0 };
+  const result = { created: 0, skipped, failed: [], catsCreated: 0, draft: imp.draft };
   const when = it => `${fmt(it.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}${it.allDay ? '' : `, ${it.start} Uhr`}`;
   let last = null;
   try {
@@ -701,7 +709,7 @@ async function impRun() {
     for (let i = 0; i < payload.length; i += IMP_BATCH) {
       const part = payload.slice(i, i + IMP_BATCH);
       try {
-        last = await api('saveEvents', { events: part });
+        last = await api('saveEvents', { events: part, draft: imp.draft });
         result.created += last.created || 0;
         (last.failed || []).forEach(f => {
           const it = chosen[i + f.index];
@@ -727,7 +735,7 @@ async function impRun() {
   renderHeader();
   imp.result = result;
   impRender();
-  toast(`${result.created} ${result.created === 1 ? 'Termin' : 'Termine'} importiert.`, result.failed.length > 0);
+  toast(`${result.created} ${result.created === 1 ? 'Termin' : 'Termine'} ${result.draft ? 'als Entwurf ' : ''}importiert.`, result.failed.length > 0);
 }
 
 /* =========================
@@ -749,7 +757,7 @@ function expRow(ev) {
     ev.subject || '', expDe(ev.date), ev.allDay ? '' : ev.start || '', ev.allDay ? '' : ev.end || '',
     ev.endDate && ev.endDate !== ev.date ? expDe(ev.endDate) : '', ev.allDay ? 'ja' : '',
     ev.location || '', ev.category || '', ev.description || '',
-    String(ev.recurrence || '').replace(/^RRULE:/i, ''), EXP_STATUS[ev.status] || '',
+    String(ev.recurrence || '').replace(/^RRULE:/i, ''), `${EXP_STATUS[ev.status] || ''}${ev.draft ? ' (Entwurf)' : ''}`,
   ];
 }
 

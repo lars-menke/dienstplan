@@ -52,7 +52,8 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 | Löschen | sichert den Termin im Blatt „Gelöscht“ und entfernt ihn aus dem Kalender (nur Admin) |
 | Tabelle | direkt in der Zelle bearbeiten, Mehrfachauswahl, Sortieren, Filtern (Schreiben/Admin, ab 768 px) |
 | Kategorien verwalten | Name und Kalenderfarbe (nur Admin) |
-| Termine importieren | Excel, CSV oder ICS mit Vorschau und Dubletten-Prüfung (nur Admin) |
+| Termine importieren | Excel, CSV oder ICS mit Vorschau und Dubletten-Prüfung (nur Admin), standardmäßig als Entwurf |
+| Entwürfe | Termine vorbereiten, die die Mannschaft erst nach „Freigeben“ sieht (anlegen und freigeben: Admin) |
 | Termine exportieren | sichtbare oder ausgewählte Termine der Tabelle als Excel/CSV, leere Vorlage (nur Admin) |
 | Zugangscodes verwalten | persönliche Codes mit Rolle, Mannschafts-Code (nur Admin) |
 | Backup und Wiederherstellen | nachts ins Sheet; gelöschte Termine per Menü zurückholen |
@@ -121,6 +122,8 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 | Kategorien verwalten | | | ✓ |
 | Zugangscodes verwalten | | | ✓ |
 | Tabellenansicht, Mehrfachaktionen | | ✓ | ✓ (Löschen nur Admin) |
+| Entwürfe sehen und bearbeiten | | ✓ | ✓ |
+| Entwürfe anlegen und freigeben | | | ✓ |
 | Darstellung umschalten | ✓ | ✓ | ✓ |
 
 **Regeln**
@@ -192,6 +195,7 @@ Die **Dienstplan-PWA** ist eine Handy-App, mit der die Termine einer freiwillige
 | `verschobenAuf` | Text | `"19.11.2026, 19:00 Uhr"` | Ziel der Verschiebung |
 | `folgetermin` | Ja/Nein | `true` | neuer Termin bereits angelegt |
 | `synced` | Ja/Nein | `true` | immer `true` (Termine stehen direkt im Kalender) |
+| `draft` | Ja/Nein | `false` | Entwurf (liegt im privaten Entwurfs-Kalender); wird an Lesen nie geliefert |
 | `lastChange` | Text | `"06.11.2026 18:12 · Lars"` | letzte Änderung über die App mit Name; sonst Zeit von Google, ggf. „· direkt im Kalender“ |
 
 Geliefert werden alle Termine ab **1. Januar des Vorjahres**, ein Eintrag pro Serie. Typische Mengen: 150–300 Termine/Jahr, 3 Kategorien.
@@ -219,6 +223,8 @@ Titel und Beschreibung werden **immer aus den Zusatzfeldern neu gebaut**.
 **Termine ohne Zusatzfelder** (direkt in Google angelegt) zeigt die App trotzdem: Status aus dem Titel-Präfix, Betreff ohne Präfix, Kategorie aus der Zeile `Kategorie: …` oder einer eindeutigen Farbe, Beschreibung ohne Kategorie-Zeile, Status-Hinweis und alte Markierung „#Dienstplan 2026“. Beim ersten Speichern aus der App bekommen sie die Zusatzfelder.
 
 **Serien:** ein Eintrag pro Serie; Status-Aktionen und Änderungen gelten für die ganze Serie. Einzelne, direkt in Google geänderte Termine einer Serie zeigt die App nicht gesondert.
+
+**Entwürfe** liegen in einem zweiten, **privaten Google Kalender** „Dienstplan – Entwürfe (nicht freigegeben)“, den nur der Besitzer sieht. Das Script legt ihn beim ersten Entwurf selbst an und merkt sich die ID in der Script-Eigenschaft `ENTWURF_KALENDER` (wurde er von Hand gelöscht, wird er beim nächsten Entwurf neu angelegt). Die App liest beide Kalender; Termine aus dem Entwurfs-Kalender haben `draft: true`. **Freigeben** verschiebt den Termin mit `Events.move` (gleiche ID, `sendUpdates: none`) in den Dienstplan-Kalender. Alle Aktionen (bearbeiten, absagen, verschieben, löschen, wiederherstellen, Kategorie nachziehen) wirken in dem Kalender, in dem der Termin liegt; der Folgetermin beim Verschieben entsteht im selben Kalender.
 
 ### 6.3 Sheet (nur Backup)
 Siehe Kapitel 17: `DataSheet` (nachts alle Termine), `Categories` (Kategorien), `Gelöscht` (jeder gelöschte Termin sofort). Änderungen im Sheet haben **keine Wirkung** auf Kalender oder App.
@@ -386,6 +392,16 @@ Weitere Aktionen → Verwaltung → **Termine importieren** öffnet eine Seite m
 
 Datumsformate `TT.MM.JJJJ` (auch `T.M.JJ`), `JJJJ-MM-TT`, Excel-Seriennummern, Datum mit Uhrzeit in einer Zelle; Zeiten `HH:MM`, `HH.MM`, „19 Uhr“, Excel-Bruchteile. Ohne Uhrzeit = ganztägig, ohne Ende = +60 Minuten. Excel liest SheetJS (`vendor/xlsx.full.min.js`, erst bei Bedarf geladen), CSV und ICS eigener Code. Beispieldatei: `docs/beispiele/import-beispiel.csv`.
 
+
+### 9.13 Entwürfe
+- **Kennzeichen:** Badge „✎ Entwurf“ (violett) an Karte, Wochenkarte, Details und Tabelle; Karten gestrichelt umrandet. Tokens `--draft` / `--draft-bg` / `--draft-line` (hell `#5b3cc4` / `#efeafd` / `#b9a8f0`, dunkel `#c5b8ff` / `#2a2456` / `#6b5cc4`).
+- **Liste:** oben ein Hinweis „12 Entwürfe – für die Mannschaft noch nicht sichtbar“ (Schreiben/Admin), für Admins mit [Freigeben…] → Sheet mit allen Entwürfen (alle vorausgewählt, abwählbar) → „n Termine freigeben“.
+- **Details:** Hinweis „Entwurf – die Mannschaft sieht den Termin erst nach ‚Freigeben‘ …“; Admin: [Freigeben – für alle sichtbar] mit Bestätigung.
+- **Formular:** bei neuen Terminen (Admin) Schalter „Als Entwurf anlegen“.
+- **Tabelle:** Status-Filter „Entwürfe“, Aktionsleiste „Freigeben (n)“ (Admin).
+- **Import:** Schalter „Als Entwurf importieren“ (Standard: an).
+- **Backup / Gelöscht / Export:** Status mit Zusatz „(ENTWURF)“ bzw. „(Entwurf)“; Wiederherstellen legt solche Zeilen wieder als Entwurf an.
+
 ---
 
 ## 10. Gesten
@@ -537,8 +553,9 @@ Content-Type: text/plain;charset=utf-8
 | `action` | Rolle | `data` | Antwort / Wirkung |
 |---|---|---|---|
 | `getData` | Lesen | `{ fresh? }` | `events`, `categoryList: [{ name, colorId, count }]`, `today`; für Admins `codeCount`. `fresh: true` (Herunterziehen, ↻) holt Änderungen sofort aus dem Kalender |
-| `saveEvent` | Schreiben | `{ eventId?, subject, date, endDate, allDay, start, end, location, description, category, recurrence? }` | ohne `eventId` neu, sonst ändern. `recurrence`: RRULE; fehlt das Feld, bleibt die Wiederholung, `''` entfernt sie. Wie `getData` + `message` |
-| `saveEvents` | Schreiben | `{ events: [ … ] }` (je wie `saveEvent`, bis 100) | `created`, `updated`, `failed: [{ index, error }]` + Liste |
+| `saveEvent` | Schreiben (mit `draft`: Admin) | `{ eventId?, subject, date, endDate, allDay, start, end, location, description, category, recurrence?, draft? }` | ohne `eventId` neu (mit `draft: true` als Entwurf), sonst ändern. `recurrence`: RRULE; fehlt das Feld, bleibt die Wiederholung, `''` entfernt sie. Wie `getData` + `message` |
+| `saveEvents` | Schreiben (mit `draft`: Admin) | `{ events: [ … ], draft? }` (je wie `saveEvent`, bis 100) | `created`, `updated`, `failed: [{ index, error }]` + Liste; `draft: true` legt neue Termine als Entwurf an |
+| `publishEvents` | Admin | `{ eventIds: [ … ] }` (bis 100) | Entwürfe freigeben (in den Dienstplan-Kalender verschieben); `published`, `failed` + Liste |
 | `setStatus` | Schreiben, **LÖSCHEN nur Admin** | `{ ref: { eventId }, status, newDate?, newTime? }` | `ABGESAGT` · `VERSCHOBEN` (+`newDate`, optional `newTime`; legt den Folgetermin an) · `AKTIV` · `LÖSCHEN` (erst Blatt „Gelöscht“, dann Kalender) |
 | `setStatusBulk` | Schreiben | `{ eventIds: [ … ], status }` (bis 100) | nur `ABGESAGT` und `AKTIV`; `updated`, `failed` + Liste |
 | `saveCategory` | Admin | `{ oldName?, name, colorId }` | anlegen bzw. ändern/umbenennen (Kapitel 8.4); wie `getData` + `message` |
@@ -550,7 +567,7 @@ Content-Type: text/plain;charset=utf-8
 | `deleteCode` | Admin | `{ id }` | Code endgültig entfernen (nicht der eigene, nicht der letzte Admin) |
 | `rotateTeamCode` | Admin | – | neuer Mannschafts-Code, alter sofort ungültig → `code`, `link`; legt einen an, falls keiner existiert |
 
-Änderungen an Terminen liefern die komplette aktuelle Liste zurück. Schreibende Aktionen laufen über `LockService` nacheinander.
+Änderungen an Terminen liefern die komplette aktuelle Liste zurück. Für die Rolle Lesen filtert der Server Entwürfe aus jeder Antwort heraus. Schreibende Aktionen laufen über `LockService` nacheinander.
 
 **Tempo:** Die Terminliste liegt im Script-Cache (bis 6 Stunden, in Teilen unter 90 KB). Ist sie älter als 5 Minuten oder kommt `fresh`, holt der Server nur die seit dem letzten Lesen geänderten bzw. gelöschten Termine (`updatedMin`, ein schneller Aufruf); komplett gelesen wird nur ohne Cache oder nach 6 Stunden – und dann nur mit den Feldern, die die App braucht. Nach dem Speichern werden die geschriebenen Termine direkt in die gespeicherte Liste übernommen. Anfragen der App öffnen die Tabelle nicht (Zeitzone wird nur am Script geprüft).
 
@@ -693,3 +710,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 09.11.2026 | V3 Etappe 5: Termine importieren (Excel/CSV/ICS, SheetJS 0.20.3 in `vendor/`), dazu Export aus der Tabelle und Vorlage (nur Admin), Cache `dienstplan-v12` |
 | 16.11.2026 | Abgesagte und verschobene Termine ohne Erinnerungen, Wieder aktivieren stellt sie her (Schnittstelle 6.0.1) |
 | 17.11.2026 | Toast oben und kontraststark (hell → dunkel, dunkel → hell), immer mit Symbol; Cache `dienstplan-v13` |
+| 19.11.2026 | Entwürfe: Import (Standard) und Formular legen Termine im privaten Entwurfs-Kalender an, „Freigeben“ macht sie sichtbar (Schnittstelle 6.2, Cache `dienstplan-v14`) |

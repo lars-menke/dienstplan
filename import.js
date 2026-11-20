@@ -6,7 +6,7 @@
 
 const IMP_XLSX_SRC = 'vendor/xlsx.full.min.js';
 const IMP_KEY_MAP = 'dienstplan.importMap';
-const IMP_BATCH = 50;
+const IMP_BATCH = 100; // das Backend legt die Termine eines Pakets parallel an
 const IMP_DEFAULT_MIN = 60; // fehlt das Ende: +60 Minuten (DEFAULT_DURATION_MIN)
 
 // Felder, die zugeordnet werden können. aliases: übliche Spaltennamen (klein, ohne Satzzeichen)

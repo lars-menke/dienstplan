@@ -957,3 +957,10 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .imp-draft { margin-top: 4px; }
 .pub-list .opt { gap: 12px; }
 .pub-list input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--draft); flex: none; }
+/* Entwürfe deutlicher: kräftige Strichelung, Datumskachel in Entwurfsfarbe, Markierung in der Tabelle */
+:root { --draft-line: #7c5ce0; }
+:root[data-theme="dark"] { --draft-line: #9d8cf0; }
+.card.is-draft, .wcard.is-draft { border: 2px dashed var(--draft-line); }
+.card.is-draft .tile { background: var(--draft-bg); color: var(--draft); }
+.tbl tr.is-draft td:first-child { box-shadow: inset 4px 0 0 var(--draft-line); }
+.tbl tr.is-draft td { border-bottom-style: dashed; border-bottom-color: var(--draft-line); }

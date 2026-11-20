@@ -374,6 +374,7 @@ Einheitliches Sheet: Titel, ein erklärender Satz, [Aktion] (primär), [Zurück]
 ### 9.11 Tabellenansicht (`Tabelle`, Schreiben/Admin, ab 768 px)
 - Dritter Eintrag im Umschalter; auf schmalen Geräten und für Lesen ausgeblendet (wird das Fenster schmaler, springt die App zur Liste). Inhalt bis 1240 px breit; die Tabelle scrollt in sich, die Kopfzeile bleibt stehen.
 - Spalten: ☐ · Datum · Beginn · Ende · Titel · Serie · Ort · Kategorie · Status · Letzte Änderung.
+- Die Tabelle behält beim Neuzeichnen (Bearbeiten, Speichern, Laden) ihre Scrollposition.
 - **Direkt bearbeiten:** Klick in Titel, Ort, Datum, Beginn, Ende oder Kategorie macht die Zelle zum Eingabefeld (Kategorie als Auswahl). Enter oder Verlassen speichert über `saveEvent`, Esc bricht ab. Während des Speicherns Kreisel in der Zeile; bei Fehler alter Wert mit rotem Rahmen und Toast. Beginn ändern verschiebt das Ende mit (Dauer bleibt), Datum ändern behält die Länge mehrtägiger Termine. Speichern läuft nacheinander.
 - Datum/Zeit einer Serie, Zeiten ganztägiger Termine und die Spalte **Serie** öffnen das normale Formular (Serie: direkt bei „Wiederholung“). Status und „Letzte Änderung“ öffnen die Details.
 - **Mehrfachauswahl:** Kästchen, Shift+Klick (Bereich), „Alle“ im Kopf. Aktionsleiste unten (statt „+ Termin“): „Absagen (n)“, „Wieder aktivieren (n)“ (`setStatusBulk`), „Kategorie setzen…“ (`saveEvents`, in Paketen zu 50), „Löschen (n)“ (nur Admin, mit Bestätigung, nacheinander über `setStatus`), „Auswahl aufheben“.
@@ -394,7 +395,7 @@ Datumsformate `TT.MM.JJJJ` (auch `T.M.JJ`), `JJJJ-MM-TT`, Excel-Seriennummern, D
 
 
 ### 9.13 Entwürfe
-- **Kennzeichen:** Badge „✎ Entwurf“ (violett) an Karte, Wochenkarte, Details und Tabelle; Karten gestrichelt umrandet. Tokens `--draft` / `--draft-bg` / `--draft-line` (hell `#5b3cc4` / `#efeafd` / `#b9a8f0`, dunkel `#c5b8ff` / `#2a2456` / `#6b5cc4`).
+- **Kennzeichen:** Badge „✎ Entwurf“ (violett) an Karte, Wochenkarte, Details und Tabelle; Karten 2 px gestrichelt, Datumskachel in Entwurfsfarbe; in der Tabelle violetter Balken links und gestrichelte Trennlinie. Tokens `--draft` / `--draft-bg` / `--draft-line` (hell `#5b3cc4` / `#efeafd` / `#7c5ce0`, dunkel `#c5b8ff` / `#2a2456` / `#9d8cf0`).
 - **Liste:** oben ein Hinweis „12 Entwürfe – für die Mannschaft noch nicht sichtbar“ (Schreiben/Admin), für Admins mit [Freigeben…] → Sheet mit allen Entwürfen (alle vorausgewählt, abwählbar) → „n Termine freigeben“.
 - **Details:** Hinweis „Entwurf – die Mannschaft sieht den Termin erst nach ‚Freigeben‘ …“; Admin: [Freigeben – für alle sichtbar] mit Bestätigung.
 - **Formular:** bei neuen Terminen (Admin) Schalter „Als Entwurf anlegen“.
@@ -556,6 +557,7 @@ Content-Type: text/plain;charset=utf-8
 | `saveEvent` | Schreiben (mit `draft`: Admin) | `{ eventId?, subject, date, endDate, allDay, start, end, location, description, category, recurrence?, draft? }` | ohne `eventId` neu (mit `draft: true` als Entwurf), sonst ändern. `recurrence`: RRULE; fehlt das Feld, bleibt die Wiederholung, `''` entfernt sie. Wie `getData` + `message` |
 | `saveEvents` | Schreiben (mit `draft`: Admin) | `{ events: [ … ], draft? }` (je wie `saveEvent`, bis 100) | `created`, `updated`, `failed: [{ index, error }]` + Liste; `draft: true` legt neue Termine als Entwurf an |
 | `publishEvents` | Admin | `{ eventIds: [ … ] }` (bis 100) | Entwürfe freigeben (in den Dienstplan-Kalender verschieben); `published`, `failed` + Liste |
+| `deleteEvents` | Admin | `{ eventIds: [ … ] }` (bis 100) | mehrere Termine löschen: alle zuerst in einem Schreibzugriff ins Blatt „Gelöscht“, dann löschen; `deleted`, `failed` + Liste |
 | `setStatus` | Schreiben, **LÖSCHEN nur Admin** | `{ ref: { eventId }, status, newDate?, newTime? }` | `ABGESAGT` · `VERSCHOBEN` (+`newDate`, optional `newTime`; legt den Folgetermin an) · `AKTIV` · `LÖSCHEN` (erst Blatt „Gelöscht“, dann Kalender) |
 | `setStatusBulk` | Schreiben | `{ eventIds: [ … ], status }` (bis 100) | nur `ABGESAGT` und `AKTIV`; `updated`, `failed` + Liste |
 | `saveCategory` | Admin | `{ oldName?, name, colorId }` | anlegen bzw. ändern/umbenennen (Kapitel 8.4); wie `getData` + `message` |
@@ -569,7 +571,7 @@ Content-Type: text/plain;charset=utf-8
 
 Änderungen an Terminen liefern die komplette aktuelle Liste zurück. Für die Rolle Lesen filtert der Server Entwürfe aus jeder Antwort heraus. Schreibende Aktionen laufen über `LockService` nacheinander.
 
-**Tempo:** Die Terminliste liegt im Script-Cache (bis 6 Stunden, in Teilen unter 90 KB). Ist sie älter als 5 Minuten oder kommt `fresh`, holt der Server nur die seit dem letzten Lesen geänderten bzw. gelöschten Termine (`updatedMin`, ein schneller Aufruf); komplett gelesen wird nur ohne Cache oder nach 6 Stunden – und dann nur mit den Feldern, die die App braucht. Nach dem Speichern werden die geschriebenen Termine direkt in die gespeicherte Liste übernommen. Anfragen der App öffnen die Tabelle nicht (Zeitzone wird nur am Script geprüft).
+**Tempo:** Die Terminliste liegt im Script-Cache (bis 6 Stunden, in Teilen unter 90 KB). Ist sie älter als 5 Minuten oder kommt `fresh`, holt der Server nur die seit dem letzten Lesen geänderten bzw. gelöschten Termine (`updatedMin`, ein schneller Aufruf); komplett gelesen wird nur ohne Cache oder nach 6 Stunden – und dann nur mit den Feldern, die die App braucht. Nach dem Speichern werden die geschriebenen Termine direkt in die gespeicherte Liste übernommen – auch wenn Google sie beim Neu-Lesen noch nicht liefert (frisch angelegte Termine erscheinen in Googles Liste manchmal erst nach Sekunden). **Mehrere Termine** (`saveEvents` beim Anlegen, `setStatusBulk`, `publishEvents`, `deleteEvents`) gehen **parallel** an die Calendar API (`UrlFetchApp.fetchAll`, je 20 gleichzeitig; bei „zu viele Anfragen“ einzeln wiederholt). Welcher Kalender einen Termin enthält, weiß das Backend aus der gespeicherten Liste – so entfallen vergebliche Abfragen. Anfragen der App öffnen die Tabelle nicht (Zeitzone wird nur am Script geprüft).
 
 **Fehler**
 
@@ -711,3 +713,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 16.11.2026 | Abgesagte und verschobene Termine ohne Erinnerungen, Wieder aktivieren stellt sie her (Schnittstelle 6.0.1) |
 | 17.11.2026 | Toast oben und kontraststark (hell → dunkel, dunkel → hell), immer mit Symbol; Cache `dienstplan-v13` |
 | 19.11.2026 | Entwürfe: Import (Standard) und Formular legen Termine im privaten Entwurfs-Kalender an, „Freigeben“ macht sie sichtbar (Schnittstelle 6.2, Cache `dienstplan-v14`) |
+| 20.11.2026 | Schneller: mehrere Termine parallel (Import, Freigeben, Mehrfach-Absagen/-Löschen), `deleteEvents`; frisch Importiertes sofort sichtbar; Tabelle behält Scrollposition; Entwürfe deutlicher gestrichelt (Schnittstelle 6.3, Cache `dienstplan-v15`) |

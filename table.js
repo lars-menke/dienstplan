@@ -127,6 +127,10 @@ function renderTable() {
 
   const body = rows.map(ev => tableRowHtml(ev)).join('');
 
+  // Scrollposition der Tabelle merken – sonst springt sie bei jedem Neuzeichnen an den Anfang
+  const oldScroll = listEl.querySelector('.tbl-scroll');
+  const keepTop = oldScroll ? oldScroll.scrollTop : 0;
+  const keepLeft = oldScroll ? oldScroll.scrollLeft : 0;
   listEl.innerHTML = `
     <div class="tbl-filters" role="group" aria-label="Filter">
       <label class="tbl-filter">Zeitraum
@@ -152,6 +156,8 @@ function renderTable() {
   const all = $('#tblAll');
   if (all) all.indeterminate = someSel && !allSel;
   tableFitHeight();
+  const newScroll = listEl.querySelector('.tbl-scroll');
+  if (newScroll && (keepTop || keepLeft)) { newScroll.scrollTop = keepTop; newScroll.scrollLeft = keepLeft; }
   hydrateIcons(listEl);
   $('#btnNew').hidden = !can('write') || tbl.selected.size > 0;
 
@@ -460,10 +466,12 @@ async function tableBulk(kind, btn) {
       text: 'Die Termine werden aus dem Kalender entfernt und im Blatt „Gelöscht“ gesichert. Wenn sie nur ausfallen, ist „Absagen“ meist besser.',
       label: 'Endgültig löschen', cls: 'primary',
       onYes: b => tableRunInSheet(b, async () => {
+        // ein Aufruf je 100 Termine (vorher: einer je Termin)
         let d = null, failed = 0;
-        for (const ev of evs) {
-          try { d = await api('setStatus', { ref: { eventId: ev.eventId }, status: S.LOESCHEN }); }
-          catch (e) { if (e.auth) throw e; failed++; }
+        const ids = evs.map(ev => ev.eventId);
+        for (let i = 0; i < ids.length; i += 100) {
+          try { d = await api('deleteEvents', { eventIds: ids.slice(i, i + 100) }); failed += (d.failed || []).length; }
+          catch (e) { if (e.auth) throw e; failed += Math.min(100, ids.length - i); }
         }
         return Object.assign(d || await api('getData'), {
           message: `${evs.length - failed} gelöscht${failed ? `, ${failed} Fehler` : ''}.`, warning: failed > 0,

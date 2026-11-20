@@ -89,9 +89,10 @@ function aufraeumenEtappe3() {
    ========================= */
 
 /** Aktionen der App, die diese Datei beantwortet. */
-const V3_ACTIONS = ['getData', 'saveEvent', 'setStatus', 'syncAll', 'saveCategory', 'deleteCategory', 'saveEvents', 'setStatusBulk', 'publishEvents'];
+const V3_ACTIONS = ['getData', 'saveEvent', 'setStatus', 'syncAll', 'saveCategory', 'deleteCategory', 'saveEvents', 'setStatusBulk', 'publishEvents', 'deleteEvents'];
 
 function handleActionV3_(action, data, user) {
+  v3IsKnownDraft_.ids = null; // Merkliste je Anfrage neu
   // Entwürfe anlegen und freigeben: nur Admin
   if ((action === 'saveEvent' || action === 'saveEvents') && data && data.draft) requireRole_(user, 'admin');
   const out = v3HandleAction_(action, data, user);
@@ -108,6 +109,7 @@ function v3HandleAction_(action, data, user) {
     case 'saveEvent': return v3SaveEvent_(data, user.name);
     case 'setStatus': return v3SetStatus_(data, user.name);
     case 'publishEvents': return v3PublishEvents_(data, user.name);
+    case 'deleteEvents': return v3DeleteEvents_(data, user.name);
     case 'syncAll': return Object.assign({ message: V3.MSG_SYNC_OBSOLETE }, v3GetAppData_(user.name));
     case 'saveCategory': return withAdminInfo_(v3SaveCategory_(data, user.name), user);
     case 'deleteCategory': return withAdminInfo_(v3DeleteCategory_(data, user.name), user);
@@ -203,9 +205,22 @@ function v3MergeEvents_(data, changed, removedIds, cats) {
  * changed: geänderte/neue Kalendertermine (Antwort von insert/update), removedIds: gelöschte IDs.
  */
 function v3AppDataAfterWrite_(userName, changed, removedIds, cats) {
+  cats = cats || v3Categories_();
+  changed = (changed || []).filter(ev => ev && ev.id);
+  removedIds = removedIds || [];
   const data = v3CacheGet_();
-  if (data && data.fullAt && data.listedAt) v3CachePut_(v3MergeEvents_(data, changed, removedIds, cats || v3Categories_()));
-  return v3GetAppData_(userName);
+  if (data && data.fullAt && data.listedAt) v3CachePut_(v3MergeEvents_(data, changed, removedIds, cats));
+  const out = v3GetAppData_(userName);
+  // Hat v3GetAppData_ neu gelesen, kann Google frisch Geschriebenes noch nicht liefern → hier sicher einarbeiten
+  const have = new Set(out.events.map(e => e.eventId));
+  const missing = changed.some(ev => !have.has(ev.id)) || removedIds.some(id => have.has(id));
+  if (!missing) return out;
+  const cached = v3CacheGet_();
+  if (cached && cached.fullAt && cached.listedAt) {
+    v3CachePut_(v3MergeEvents_(cached, changed, removedIds, cats));
+    return v3GetAppData_(userName);
+  }
+  return Object.assign(out, v3MergeEvents_({ events: out.events }, changed, removedIds, cats), { today: out.today, user: out.user });
 }
 
 /**
@@ -299,22 +314,43 @@ function v3PublishEvents_(data, userName) {
     const changed = [];
     const failed = [];
     let published = 0;
-    ids.forEach((id, index) => {
-      if (Date.now() - t0 > V3.MAX_RUNTIME_MS) { failed.push({ index, error: 'Zeitlimit erreicht.' }); return; }
-      try {
-        const ev = v3GetEvent_(id);
-        if (!ev) throw new Error('Termin nicht gefunden.');
-        if (!draft || v3CalOf_(ev) !== draft) return; // schon freigegeben
-        const moved = v3Cal_(() => Calendar.Events.move(draft, id, CONFIG.CALENDAR_ID, { sendUpdates: 'none' }));
-        changed.push(moved);
-        published++;
-      } catch (e) {
-        failed.push({ index, error: errMsg_(e) });
-      }
+    if (!draft) throw new Error('Es gibt keine Entwürfe.');
+    // direkt verschieben (ohne vorher zu suchen); nicht gefunden = evtl. schon freigegeben
+    const res = v3FetchAll_(ids.map(id => ({ method: 'post', cal: draft, id, suffix: '/move', query: { destination: CONFIG.CALENDAR_ID } })));
+    res.forEach((r, index) => {
+      if (r.ok) { changed.push(r.data); published++; return; }
+      if (r.gone && v3GetEvent_(ids[index])) return; // liegt schon im Dienstplan-Kalender
+      failed.push({ index, error: r.error });
     });
+    if (Date.now() - t0 > V3.MAX_RUNTIME_MS) Logger.log('publishEvents: lange Laufzeit');
     const message = `${published} ${published === 1 ? 'Termin' : 'Termine'} freigegeben – jetzt für alle sichtbar${failed.length ? `, ${failed.length} Fehler` : ''}.`;
     return Object.assign({ published, failed, message, warning: failed.length > 0 },
       v3AppDataAfterWrite_(userName, changed, [], cats));
+  });
+}
+
+/** { eventIds } – mehrere Termine löschen (nur Admin): erst alle ins Blatt „Gelöscht“, dann parallel löschen. */
+function v3DeleteEvents_(data, userName) {
+  const ids = Array.isArray(data.eventIds) ? data.eventIds : [];
+  if (!ids.length) throw new Error('Keine Termine übergeben.');
+  if (ids.length > V3.MAX_BULK) throw new Error(`Höchstens ${V3.MAX_BULK} Termine pro Aufruf.`);
+  return withWebLock_(() => {
+    const cats = v3Categories_();
+    const evs = v3GetEvents_(ids);
+    const failed = [];
+    const found = [];
+    evs.forEach((ev, index) => { if (ev) found.push({ index, ev }); else failed.push({ index, error: 'Termin nicht gefunden.' }); });
+    // erst sichern (V3 5.3), dann löschen
+    v3WriteDeletedMany_(found.map(x => ({ ev: x.ev, f: v3Fields_(x.ev, cats) })), userName);
+    const removed = [];
+    v3FetchAll_(found.map(x => ({ method: 'delete', cal: v3CalOf_(x.ev), id: x.ev.id }))).forEach((r, k) => {
+      if (r.ok || r.gone) removed.push(found[k].ev.id);
+      else failed.push({ index: found[k].index, error: r.error });
+    });
+    failed.sort((a, b) => a.index - b.index);
+    const message = `${removed.length} ${removed.length === 1 ? 'Termin' : 'Termine'} gelöscht${failed.length ? `, ${failed.length} Fehler` : ''}.`;
+    return Object.assign({ deleted: removed.length, failed, message, warning: failed.length > 0 },
+      v3AppDataAfterWrite_(userName, [], removed, cats));
   });
 }
 
@@ -434,6 +470,8 @@ function v3SaveEvents_(data, userName) {
     let updated = 0;
     const failed = [];
     const changedEvents = [];
+    const creates = []; // { index, body }
+    const stamp = v3Stamp_(userName);
     items.forEach((item, index) => {
       if (Date.now() - t0 > V3.MAX_RUNTIME_MS) {
         failed.push({ index, error: 'Zeitlimit erreicht – bitte diesen Termin erneut senden.' });
@@ -441,13 +479,38 @@ function v3SaveEvents_(data, userName) {
       }
       try {
         const input = validateEventInput_(item || {});
-        const r = v3SaveOne_((item && item.eventId) || '', input, cats, userName, { draft: !!data.draft });
-        changedEvents.push(r.ev);
-        if (r.kind === 'created') created++; else updated++;
+        if (item && item.eventId) {
+          const r = v3SaveOne_(item.eventId, input, cats, userName, {});
+          changedEvents.push(r.ev);
+          updated++;
+        } else {
+          const f = {
+            subject: input.subject, desc: input.description, cat: input.category, location: input.location,
+            date: input.date, endDate: input.endDate, allDay: input.allDay, start: input.start, end: input.end,
+            recurrence: input.recurrence || '', status: CONFIG.STATUS.AKTIV,
+            movedTo: '', movedToText: '', movedFrom: '', changed: stamp,
+          };
+          creates.push({ index, body: v3InsertBody_(f, cats) });
+        }
       } catch (e) {
         failed.push({ index, error: errMsg_(e) });
       }
     });
+    if (creates.length) {
+      let calId = data.draft ? v3DraftCal_(true) : CONFIG.CALENDAR_ID;
+      let res = v3FetchAll_(creates.map(c => ({ method: 'post', cal: calId, body: c.body })));
+      // Entwurfs-Kalender von Hand gelöscht → neu anlegen und noch einmal
+      if (data.draft && res.every(r => !r.ok && r.gone)) {
+        PropertiesService.getScriptProperties().deleteProperty(V3.PROP_DRAFT_CAL);
+        calId = v3DraftCal_(true);
+        res = v3FetchAll_(creates.map(c => ({ method: 'post', cal: calId, body: c.body })));
+      }
+      res.forEach((r, k) => {
+        if (r.ok) { changedEvents.push(v3Tag_(r.data, calId)); created++; }
+        else failed.push({ index: creates[k].index, error: r.error });
+      });
+    }
+    failed.sort((a, b) => a.index - b.index);
     const message = `${created} angelegt, ${updated} geändert${failed.length ? `, ${failed.length} Fehler` : ''}.`;
     return Object.assign({ created, updated, failed, message, warning: failed.length > 0 },
       v3AppDataAfterWrite_(userName, changedEvents, [], cats));
@@ -469,21 +532,22 @@ function v3SetStatusBulk_(data, userName) {
     let updated = 0;
     const failed = [];
     const changedEvents = [];
-    ids.forEach((id, index) => {
-      if (Date.now() - t0 > V3.MAX_RUNTIME_MS) { failed.push({ index, error: 'Zeitlimit erreicht.' }); return; }
-      try {
-        const ev = v3GetEvent_(id);
-        if (!ev) throw new Error('Termin nicht gefunden.');
-        const f = v3Fields_(ev, cats);
-        f.status = status;
-        f.changed = stamp;
-        if (status === S.AKTIV) f.movedToText = '';
-        changedEvents.push(v3Update_(ev, f, cats));
-        updated++;
-      } catch (e) {
-        failed.push({ index, error: errMsg_(e) });
-      }
+    const evs = v3GetEvents_(ids);
+    const puts = []; // { index, calId, body, id }
+    evs.forEach((ev, index) => {
+      if (!ev) { failed.push({ index, error: 'Termin nicht gefunden.' }); return; }
+      const f = v3Fields_(ev, cats);
+      f.status = status;
+      f.changed = stamp;
+      if (status === S.AKTIV) f.movedToText = '';
+      const u = v3UpdateBody_(ev, f, cats);
+      puts.push({ index, calId: u.calId, body: u.body, id: ev.id });
     });
+    v3FetchAll_(puts.map(p => ({ method: 'put', cal: p.calId, id: p.id, body: p.body }))).forEach((r, k) => {
+      if (r.ok) { changedEvents.push(v3Tag_(r.data, puts[k].calId)); updated++; }
+      else failed.push({ index: puts[k].index, error: r.error });
+    });
+    if (Date.now() - t0 > V3.MAX_RUNTIME_MS) Logger.log('setStatusBulk: lange Laufzeit');
     const word = status === S.ABGESAGT ? 'abgesagt' : 'wieder aktiv';
     const message = `${updated} ${updated === 1 ? 'Termin' : 'Termine'} ${word}${failed.length ? `, ${failed.length} Fehler` : ''}.`;
     return Object.assign({ updated, failed, message, warning: failed.length > 0 },
@@ -833,14 +897,20 @@ function v3RemText_(reminders) {
   return s.length > 1000 ? JSON.stringify({ useDefault: true }) : s;
 }
 
-function v3Insert_(f, cats, calId) {
-  calId = calId || CONFIG.CALENDAR_ID;
+/** Termin-Daten fürs Anlegen (ohne Erinnerungen, falls abgesagt/verschoben). */
+function v3InsertBody_(f, cats) {
   const res = v3Resource_(f, cats);
   if (v3IsInactive_(f.status)) {
     // z. B. Wiederherstellen eines abgesagten Termins: gleich ohne Erinnerungen anlegen
     res.reminders = V3_REMINDERS_OFF;
     res.extendedProperties.private.rem = v3RemText_({ useDefault: true });
   }
+  return res;
+}
+
+function v3Insert_(f, cats, calId) {
+  calId = calId || CONFIG.CALENDAR_ID;
+  const res = v3InsertBody_(f, cats);
   try {
     return v3Tag_(Calendar.Events.insert(res, calId, { sendUpdates: 'none' }), calId);
   } catch (e) {
@@ -855,7 +925,8 @@ function v3Insert_(f, cats, calId) {
 }
 
 /** Vollständig aktualisieren; Erinnerungen, Teilnehmer, EXDATE usw. bleiben erhalten. */
-function v3Update_(existing, f, cats) {
+/** Vollständige Termin-Daten fürs Aktualisieren → { calId, body } */
+function v3UpdateBody_(existing, f, cats) {
   const payload = v3Resource_(f, cats);
   const merged = mergeForUpdate_(existing, payload);
   const shared = existing.extendedProperties && existing.extendedProperties.shared;
@@ -874,9 +945,92 @@ function v3Update_(existing, f, cats) {
     }
   }
   merged.extendedProperties = shared ? { shared, private: priv } : { private: priv };
-  const calId = v3CalOf_(existing);
   delete merged.__cal;
-  return v3Tag_(v3Cal_(() => Calendar.Events.update(merged, calId, existing.id, { sendUpdates: 'none' })), calId);
+  return { calId: v3CalOf_(existing), body: merged };
+}
+
+function v3Update_(existing, f, cats) {
+  const u = v3UpdateBody_(existing, f, cats);
+  return v3Tag_(v3Cal_(() => Calendar.Events.update(u.body, u.calId, existing.id, { sendUpdates: 'none' })), u.calId);
+}
+
+/* =========================
+   PARALLEL: viele Termine auf einmal (UrlFetchApp.fetchAll gegen die Calendar API)
+   Statt jeden Termin einzeln nacheinander zu schreiben, gehen bis zu 20 Anfragen
+   gleichzeitig raus. Bei „zu viele Anfragen“ wird der Rest einzeln wiederholt.
+   ========================= */
+
+const V3_API = 'https://www.googleapis.com/calendar/v3/calendars/';
+const V3_PARALLEL = 20;
+
+/** req: { method, cal, id?, suffix?, query?, body? } → URL der Calendar API */
+function v3ApiUrl_(r) {
+  let url = V3_API + encodeURIComponent(r.cal) + '/events';
+  if (r.id) url += '/' + encodeURIComponent(r.id);
+  if (r.suffix) url += r.suffix;
+  const q = Object.assign({ sendUpdates: 'none' }, r.query || {});
+  return url + '?' + Object.keys(q).map(k => `${k}=${encodeURIComponent(q[k])}`).join('&');
+}
+
+/** → [{ ok, data, code, error, gone }] in derselben Reihenfolge */
+function v3FetchAll_(reqs) {
+  const out = new Array(reqs.length);
+  if (!reqs.length) return out;
+  const token = ScriptApp.getOAuthToken();
+  const toFetch = r => {
+    const o = { url: v3ApiUrl_(r), method: r.method, headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true };
+    if (r.body) { o.contentType = 'application/json'; o.payload = JSON.stringify(r.body); }
+    return o;
+  };
+  const parse = resp => {
+    const code = resp.getResponseCode();
+    const text = resp.getContentText() || '';
+    if (code >= 200 && code < 300) return { ok: true, code, data: text ? JSON.parse(text) : null };
+    let msg = '';
+    try { msg = (JSON.parse(text).error || {}).message || ''; } catch (e) { msg = text.slice(0, 200); }
+    const gone = code === 404 || code === 410;
+    const limited = code === 429 || (code === 403 && /rate|quota|limit/i.test(msg));
+    return { ok: false, code, gone, limited, error: gone ? 'Termin nicht gefunden.' : (msg || `Fehler ${code}`) };
+  };
+  for (let i = 0; i < reqs.length; i += V3_PARALLEL) {
+    const part = reqs.slice(i, i + V3_PARALLEL);
+    const resps = UrlFetchApp.fetchAll(part.map(toFetch));
+    resps.forEach((resp, j) => { out[i + j] = parse(resp); });
+  }
+  // zu viele Anfragen auf einmal → einzeln mit kurzer Pause wiederholen
+  out.forEach((res, i) => {
+    if (res && res.limited) {
+      Utilities.sleep(1200);
+      out[i] = parse(UrlFetchApp.fetch(toFetch(reqs[i]).url, toFetch(reqs[i])));
+    }
+  });
+  out.forEach(res => { if (res && !res.ok && !res.gone && res.error) res.error = V3.MSG_CALENDAR_DOWN + ` (${res.error})`; });
+  return out;
+}
+
+/** Mehrere Termine auf einmal holen; ids → [ev|null]. Sucht zuerst im vermuteten Kalender, dann im anderen. */
+function v3GetEvents_(ids) {
+  const draft = v3DraftCal_(false);
+  const first = ids.map(id => (draft && v3IsKnownDraft_(id) ? draft : CONFIG.CALENDAR_ID));
+  const res = v3FetchAll_(ids.map((id, i) => ({ method: 'get', cal: first[i], id })));
+  const evs = res.map((r, i) => (r.ok && r.data && r.data.status !== 'cancelled' ? v3Tag_(r.data, first[i]) : null));
+  if (draft) {
+    const retry = ids.map((id, i) => (!evs[i] && res[i].gone ? i : -1)).filter(i => i !== -1);
+    const other = i => (first[i] === draft ? CONFIG.CALENDAR_ID : draft);
+    const res2 = v3FetchAll_(retry.map(i => ({ method: 'get', cal: other(i), id: ids[i] })));
+    retry.forEach((i, k) => { if (res2[k].ok && res2[k].data && res2[k].data.status !== 'cancelled') evs[i] = v3Tag_(res2[k].data, other(i)); });
+  }
+  ids.forEach((id, i) => { if (!evs[i] && !res[i].ok && !res[i].gone) throw new Error(res[i].error); });
+  return evs;
+}
+
+/** Aus dem Zwischenspeicher: liegt dieser Termin im Entwurfs-Kalender? (spart vergebliche Abfragen) */
+function v3IsKnownDraft_(id) {
+  if (!v3IsKnownDraft_.ids) {
+    const data = v3CacheGet_();
+    v3IsKnownDraft_.ids = new Set(((data && data.events) || []).filter(e => e.draft).map(e => e.eventId));
+  }
+  return v3IsKnownDraft_.ids.has(id);
 }
 
 /**
@@ -911,7 +1065,8 @@ function erinnerungenBeiAbsagenEntfernen() {
 function v3GetEvent_(id) {
   if (!id) return null;
   const draft = v3DraftCal_(false);
-  const cals = draft ? [CONFIG.CALENDAR_ID, draft] : [CONFIG.CALENDAR_ID];
+  let cals = draft ? [CONFIG.CALENDAR_ID, draft] : [CONFIG.CALENDAR_ID];
+  if (draft && v3IsKnownDraft_(id)) cals = [draft, CONFIG.CALENDAR_ID];
   for (const calId of cals) {
     try {
       const ev = Calendar.Events.get(calId, id);
@@ -980,6 +1135,12 @@ function v3BackupRow_(ev, f) {
 }
 
 function v3WriteDeleted_(ev, f, userName) {
+  v3WriteDeletedMany_([{ ev, f }], userName);
+}
+
+/** Mehrere Zeilen auf einmal ins Blatt „Gelöscht“ (ein Schreibzugriff statt vieler). */
+function v3WriteDeletedMany_(list, userName) {
+  if (!list.length) return;
   const ss = getSs_();
   const headers = V3.BACKUP_HEADERS.concat(['Gelöscht am', 'Gelöscht von']);
   let sheet = ss.getSheetByName(V3.DELETED_SHEET);
@@ -989,10 +1150,11 @@ function v3WriteDeleted_(ev, f, userName) {
     sheet.setFrozenRows(1);
     v3Protect_(sheet);
   }
-  sheet.appendRow(v3BackupRow_(ev, f).concat([
-    Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm'),
-    userName || '',
-  ]));
+  const when = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'dd.MM.yyyy HH:mm');
+  const rows = list.map(x => v3BackupRow_(x.ev, x.f).concat([when, userName || '']));
+  const start = sheet.getLastRow() + 1;
+  if (sheet.getMaxRows() < start + rows.length - 1) sheet.insertRowsAfter(sheet.getMaxRows(), start + rows.length - 1 - sheet.getMaxRows());
+  sheet.getRange(start, 1, rows.length, headers.length).setValues(rows);
 }
 
 /* =========================

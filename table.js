@@ -76,7 +76,7 @@ function tableRows() {
     // Serien laufen weiter, auch wenn sie früher begonnen haben → bei „Ab heute“ immer zeigen
     if (f.range === 'upcoming' && !q && !ev.recurring && (ev.endDate || ev.date) < today) return false;
     if (f.cat === '-') { if (ev.category) return false; } else if (f.cat && (ev.category || '').toLowerCase() !== f.cat.toLowerCase()) return false;
-    if (f.status && ev.status !== f.status) return false;
+    if (f.status === 'DRAFT') { if (!ev.draft) return false; } else if (f.status && ev.status !== f.status) return false;
     return true;
   });
   const { col, dir } = tbl.sort;
@@ -127,6 +127,10 @@ function renderTable() {
 
   const body = rows.map(ev => tableRowHtml(ev)).join('');
 
+  // Scrollposition der Tabelle merken – sonst springt sie bei jedem Neuzeichnen an den Anfang
+  const oldScroll = listEl.querySelector('.tbl-scroll');
+  const keepTop = oldScroll ? oldScroll.scrollTop : 0;
+  const keepLeft = oldScroll ? oldScroll.scrollLeft : 0;
   listEl.innerHTML = `
     <div class="tbl-filters" role="group" aria-label="Filter">
       <label class="tbl-filter">Zeitraum
@@ -135,7 +139,8 @@ function renderTable() {
         <select id="tfCat"><option value="">Alle</option>${catOpts}<option value="-" ${sel('-', tbl.filter.cat)}>Ohne Kategorie</option></select></label>
       <label class="tbl-filter">Status
         <select id="tfStatus"><option value="">Alle</option><option value="AKTIV" ${sel('AKTIV', tbl.filter.status)}>Aktiv</option>
-          <option value="ABGESAGT" ${sel('ABGESAGT', tbl.filter.status)}>Abgesagt</option><option value="VERSCHOBEN" ${sel('VERSCHOBEN', tbl.filter.status)}>Verschoben</option></select></label>
+          <option value="ABGESAGT" ${sel('ABGESAGT', tbl.filter.status)}>Abgesagt</option><option value="VERSCHOBEN" ${sel('VERSCHOBEN', tbl.filter.status)}>Verschoben</option>
+          <option value="DRAFT" ${sel('DRAFT', tbl.filter.status)}>Entwürfe</option></select></label>
       <span class="tbl-count" aria-live="polite">${rows.length} ${rows.length === 1 ? 'Termin' : 'Termine'}</span>
       ${expCanUse() ? `<button type="button" class="btn small tbl-export" id="tblExport">${icon('share', 18)}Exportieren</button>` : ''}
     </div>
@@ -151,6 +156,8 @@ function renderTable() {
   const all = $('#tblAll');
   if (all) all.indeterminate = someSel && !allSel;
   tableFitHeight();
+  const newScroll = listEl.querySelector('.tbl-scroll');
+  if (newScroll && (keepTop || keepLeft)) { newScroll.scrollTop = keepTop; newScroll.scrollLeft = keepLeft; }
   hydrateIcons(listEl);
   $('#btnNew').hidden = !can('write') || tbl.selected.size > 0;
 
@@ -185,6 +192,7 @@ function tableRowHtml(ev) {
   if (saving) cls.push('is-saving');
   if (ev.status === S.ABGESAGT) cls.push('is-cancelled');
   if (ev.status === S.VERSCHOBEN) cls.push('is-moved');
+  if (ev.draft) cls.push('is-draft');
   if (!ev.recurring && (ev.endDate || ev.date) < todayIso()) cls.push('is-past');
   if (ev.date === todayIso()) cls.push('is-today');
 
@@ -242,6 +250,7 @@ function tableCellHtml(ev, col, isSel, saving) {
       } else {
         badge = statusBadge(ev);
       }
+      if (ev.draft) badge = `<span class="badge draft">${icon('pencil', 12, 2.5)}Entwurf</span>${badge}`;
       return `<button type="button" class="tbl-status" data-open tabindex="-1" aria-label="${esc(`Details zu ${ev.subject}`)}">${badge}</button>`;
     }
     case 'changed':
@@ -267,12 +276,14 @@ function tableBarHtml() {
   if (!n) return '';
   const evs = [...tbl.selected].map(tableEvent).filter(Boolean);
   const nCancel = evs.filter(e => e.status === S.AKTIV).length;
+  const nDraft = evs.filter(e => e.draft).length;
   const nReact = evs.filter(e => e.status === S.ABGESAGT || e.status === S.VERSCHOBEN).length;
   const dis = tbl.bulkBusy ? 'disabled' : '';
   return `<div class="tbl-bar" role="toolbar" aria-label="Aktionen für ${n} ausgewählte Termine">
     <span class="tbl-bar-count"><b>${n}</b> ausgewählt</span>
     <button type="button" class="btn small" data-bulk="cancel" ${nCancel && !tbl.bulkBusy ? '' : 'disabled'}>${icon('ban', 18)}Absagen (${nCancel})</button>
     <button type="button" class="btn small" data-bulk="reactivate" ${nReact && !tbl.bulkBusy ? '' : 'disabled'}>${icon('refresh', 18)}Wieder aktivieren (${nReact})</button>
+    ${nDraft && can('admin') ? `<button type="button" class="btn small publish" data-bulk="publish" ${dis}>${icon('check', 18, 2.5)}Freigeben (${nDraft})</button>` : ''}
     <button type="button" class="btn small" data-bulk="category" ${dis}>${icon('tags', 18)}Kategorie setzen…</button>
     ${can('admin') ? `<button type="button" class="btn small danger-outline" data-bulk="delete" ${dis}>Löschen (${n})</button>` : ''}
     ${expCanUse() ? `<button type="button" class="btn small" data-bulk="export" ${dis}>${icon('share', 18)}Exportieren (${n})</button>` : ''}
@@ -434,6 +445,16 @@ async function tableBulk(kind, btn) {
   const evs = [...tbl.selected].map(tableEvent).filter(Boolean);
   if (!evs.length) return;
   if (kind === 'clear') { tbl.selected.clear(); tbl.anchor = null; return renderTable(); }
+  if (kind === 'publish') {
+    const drafts = evs.filter(e => e.draft);
+    return confirmAct({
+      title: `${drafts.length} ${drafts.length === 1 ? 'Entwurf' : 'Entwürfe'} freigeben?`,
+      text: 'Die Termine erscheinen danach im Dienstplan-Kalender und in der App – für alle sichtbar.',
+      label: 'Freigeben', cls: 'primary',
+      onYes: b => { tbl.selected.clear(); return publishDrafts(drafts.map(e => e.eventId), b); },
+      back: () => closeSheet(),
+    });
+  }
   if (kind === 'export') {
     // ausgewählte Termine in der Reihenfolge der Ansicht
     return expOpenSheet(tableRows().filter(ev => tbl.selected.has(ev.eventId)), 'ausgewählte Termine');
@@ -445,10 +466,12 @@ async function tableBulk(kind, btn) {
       text: 'Die Termine werden aus dem Kalender entfernt und im Blatt „Gelöscht“ gesichert. Wenn sie nur ausfallen, ist „Absagen“ meist besser.',
       label: 'Endgültig löschen', cls: 'primary',
       onYes: b => tableRunInSheet(b, async () => {
+        // ein Aufruf je 100 Termine (vorher: einer je Termin)
         let d = null, failed = 0;
-        for (const ev of evs) {
-          try { d = await api('setStatus', { ref: { eventId: ev.eventId }, status: S.LOESCHEN }); }
-          catch (e) { if (e.auth) throw e; failed++; }
+        const ids = evs.map(ev => ev.eventId);
+        for (let i = 0; i < ids.length; i += 100) {
+          try { d = await api('deleteEvents', { eventIds: ids.slice(i, i + 100) }); failed += (d.failed || []).length; }
+          catch (e) { if (e.auth) throw e; failed += Math.min(100, ids.length - i); }
         }
         return Object.assign(d || await api('getData'), {
           message: `${evs.length - failed} gelöscht${failed ? `, ${failed} Fehler` : ''}.`, warning: failed > 0,

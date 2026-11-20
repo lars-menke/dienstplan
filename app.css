@@ -933,3 +933,34 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .tbl-export { min-height: 40px; font-size: 14px; padding: 0 12px; margin-bottom: 2px; }
 .tbl-filters .tbl-count { margin-left: auto; }
 .imp-template { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+
+/* ---------- Entwürfe (noch nicht freigegeben) ---------- */
+:root { --draft: #5b3cc4; --draft-bg: #efeafd; --draft-line: #b9a8f0; }
+:root[data-theme="dark"] { --draft: #c5b8ff; --draft-bg: #2a2456; --draft-line: #6b5cc4; }
+.badge.draft { background: var(--draft-bg); color: var(--draft); font-weight: 700; gap: 5px; }
+.card.is-draft, .wcard.is-draft { border: 1.5px dashed var(--draft-line); }
+.wdraft { color: var(--draft); }
+.note.draft { background: var(--draft-bg); color: var(--draft); }
+.note.draft .ic { color: var(--draft); }
+.draft-bar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--draft-bg); color: var(--draft); border: 1px dashed var(--draft-line); font-size: 14px;
+}
+.draft-bar .grow { flex: 1; min-width: 0; }
+.draft-bar .btn { min-height: 40px; font-size: 14px; padding: 0 12px; background: var(--surface); color: var(--draft); border-color: var(--draft-line); }
+.btn.publish { background: var(--draft); color: #fff; border: 0; }
+:root[data-theme="dark"] .btn.publish { color: #0b1530; }
+.tbl tr.is-draft td.c-subject .tbl-title::after { content: ""; }
+.tbl-status .badge.draft { margin-right: 6px; }
+.switch-sub { display: block; font-size: 12px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.switch-row > span:not(.switch) { flex: 1; padding-right: 12px; }
+.imp-draft { margin-top: 4px; }
+.pub-list .opt { gap: 12px; }
+.pub-list input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--draft); flex: none; }
+/* Entwürfe deutlicher: kräftige Strichelung, Datumskachel in Entwurfsfarbe, Markierung in der Tabelle */
+:root { --draft-line: #7c5ce0; }
+:root[data-theme="dark"] { --draft-line: #9d8cf0; }
+.card.is-draft, .wcard.is-draft { border: 2px dashed var(--draft-line); }
+.card.is-draft .tile { background: var(--draft-bg); color: var(--draft); }
+.tbl tr.is-draft td:first-child { box-shadow: inset 4px 0 0 var(--draft-line); }
+.tbl tr.is-draft td { border-bottom-style: dashed; border-bottom-color: var(--draft-line); }

@@ -93,6 +93,7 @@ const V3_ACTIONS = ['getData', 'saveEvent', 'setStatus', 'syncAll', 'saveCategor
 
 function handleActionV3_(action, data, user) {
   v3IsKnownDraft_.ids = null; // Merkliste je Anfrage neu
+  v3FetchAll_.noPermission = false;
   // Entwürfe anlegen und freigeben: nur Admin
   if ((action === 'saveEvent' || action === 'saveEvents') && data && data.draft) requireRole_(user, 'admin');
   const out = v3HandleAction_(action, data, user);
@@ -992,9 +993,23 @@ function v3FetchAll_(reqs) {
     const limited = code === 429 || (code === 403 && /rate|quota|limit/i.test(msg));
     return { ok: false, code, gone, limited, error: gone ? 'Termin nicht gefunden.' : (msg || `Fehler ${code}`) };
   };
+  if (v3FetchAll_.noPermission) return v3SequentialAll_(reqs);
   for (let i = 0; i < reqs.length; i += V3_PARALLEL) {
     const part = reqs.slice(i, i + V3_PARALLEL);
-    const resps = UrlFetchApp.fetchAll(part.map(toFetch));
+    let resps;
+    try {
+      resps = UrlFetchApp.fetchAll(part.map(toFetch));
+    } catch (e) {
+      // Berechtigung „externe Anfragen“ fehlt → für den Rest einzeln über den Kalender-Dienst
+      if (/script\.external_request|Berechtigung|permission/i.test(errMsg_(e))) {
+        Logger.log('Parallele Anfragen nicht erlaubt (Berechtigung script.external_request fehlt) – arbeite einzeln.');
+        v3FetchAll_.noPermission = true;
+        const rest = v3SequentialAll_(reqs.slice(i));
+        rest.forEach((r, j) => { out[i + j] = r; });
+        return out;
+      }
+      throw e;
+    }
     resps.forEach((resp, j) => { out[i + j] = parse(resp); });
   }
   // zu viele Anfragen auf einmal → einzeln mit kurzer Pause wiederholen
@@ -1006,6 +1021,25 @@ function v3FetchAll_(reqs) {
   });
   out.forEach(res => { if (res && !res.ok && !res.gone && res.error) res.error = V3.MSG_CALENDAR_DOWN + ` (${res.error})`; });
   return out;
+}
+
+/** Rückfall ohne UrlFetch: dieselben Anfragen einzeln über den Kalender-Dienst (langsamer, aber ohne Zusatz-Berechtigung). */
+function v3SequentialAll_(reqs) {
+  return reqs.map(r => {
+    try {
+      const opt = { sendUpdates: 'none' };
+      let data = null;
+      if (r.suffix === '/move') data = Calendar.Events.move(r.cal, r.id, r.query.destination, opt);
+      else if (r.method === 'post') data = Calendar.Events.insert(r.body, r.cal, opt);
+      else if (r.method === 'get') data = Calendar.Events.get(r.cal, r.id);
+      else if (r.method === 'put') data = Calendar.Events.update(r.body, r.cal, r.id, opt);
+      else if (r.method === 'delete') Calendar.Events.remove(r.cal, r.id, opt);
+      return { ok: true, code: 200, data };
+    } catch (e) {
+      const gone = isGoneError_(e);
+      return { ok: false, gone, error: gone ? 'Termin nicht gefunden.' : V3.MSG_CALENDAR_DOWN + ` (${errMsg_(e)})` };
+    }
+  });
 }
 
 /** Mehrere Termine auf einmal holen; ids → [ev|null]. Sucht zuerst im vermuteten Kalender, dann im anderen. */

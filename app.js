@@ -520,6 +520,11 @@ function render() {
     html += `<button class="past-btn" type="button" id="pastBtn" aria-expanded="${state.showPast}">
       ${icon(state.showPast ? 'chevronDown' : 'chevronUp', 14, 2.5)}${state.showPast ? 'Vergangene ausblenden' : 'Vergangene Termine'}</button>`;
   }
+  const drafts = state.events.filter(e => e.draft);
+  if (drafts.length && ROLE_RANK[state.role] >= ROLE_RANK.write) {
+    html += `<div class="draft-bar" role="status">${icon('pencil', 18)}<span class="grow"><b>${drafts.length} ${drafts.length === 1 ? 'Entwurf' : 'Entwürfe'}</b> – für die Mannschaft noch nicht sichtbar</span>${
+      can('admin') && ROLE_RANK[state.role] ? '<button class="btn small" type="button" id="draftPublish">Freigeben…</button>' : ''}</div>`;
+  }
   if (ROLE_RANK[state.role] >= ROLE_RANK.write && !store.get(KEY_SWIPE_HINT)) {
     html += `<p class="swipe-hint">Tipp: Karte nach links wischen = Absagen · nach rechts = Verschieben</p>`;
   }
@@ -550,6 +555,8 @@ function render() {
   }
 
   listEl.innerHTML = html;
+  const dp = $('#draftPublish');
+  if (dp) dp.onclick = () => openPublishSheet(state.events.filter(e => e.draft));
   const pb = $('#pastBtn');
   if (pb) pb.onclick = () => { state.showPast = !state.showPast; render(); if (state.showPast) listEl.scrollIntoView(); };
 }
@@ -568,6 +575,7 @@ function cardHtml(ev, isToday) {
   const saving = state.saving[cardKey(ev)];
   const cls = ['card'];
   if (saving) cls.push('is-saving');
+  if (ev.draft) cls.push('is-draft');
   if (ev.status === S.ABGESAGT) cls.push('is-cancelled');
   else if (ev.status === S.VERSCHOBEN) cls.push('is-moved');
   else if (isToday) cls.push('is-today');
@@ -598,6 +606,7 @@ function categoryBadge(ev) {
 
 function badgesHtml(ev, withStatus) {
   const b = [];
+  if (ev.draft) b.push(`<span class="badge draft">${icon('pencil', 12, 2.5)}Entwurf</span>`);
   if (withStatus) b.push(statusBadge(ev));
   if (ev.status === S.VERSCHOBEN) {
     const target = parseGermanDate(ev.verschobenAuf);
@@ -697,6 +706,7 @@ function renderWeek() {
     const evs = eventsOn(d);
     const cards = evs.map(ev => {
       const cls = ['wcard'];
+      if (ev.draft) cls.push('is-draft');
       let meta;
       if (ev.status === S.VERSCHOBEN) {
         cls.push('is-moved');
@@ -713,7 +723,7 @@ function renderWeek() {
       const statusWord = ev.status === S.ABGESAGT ? ', abgesagt' : ev.status === S.VERSCHOBEN ? ', verschoben' : '';
       return `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(cardKey(ev))}"
           aria-label="${esc(`${ev.subject}, ${timeText(ev)}${ev.location ? ', ' + ev.location : ''}${statusWord}`)}">
-        <span class="wmeta" aria-hidden="true">${meta}</span><span class="wtitle" aria-hidden="true">${esc(ev.subject)}</span></button>`;
+        <span class="wmeta" aria-hidden="true">${ev.draft ? '<b class="wdraft">Entwurf</b> · ' : ''}${meta}</span><span class="wtitle" aria-hidden="true">${esc(ev.subject)}</span></button>`;
     }).join('');
     return `<section class="day-row${d === today ? ' is-today' : ''}" id="day-${d}" aria-label="${esc(longDate(d))}">
       <div class="day-label" aria-hidden="true"><span class="wd">${esc(wdShort(d))}</span><span class="d">${toDate(d).getDate()}</span></div>
@@ -1131,6 +1141,7 @@ function openDetail(ev) {
       ev.folgetermin ? ' Der neue Termin ist angelegt.' : ''}</span></div>`);
   }
   if (ev.status === S.ABGESAGT) notes.push(`<div class="note">${icon('ban', 18)}<span>Abgesagt. Der Termin bleibt im Kalender sichtbar.</span></div>`);
+  if (ev.draft) notes.push(`<div class="note draft">${icon('pencil', 18)}<span><b>Entwurf.</b> Die Mannschaft sieht den Termin erst nach „Freigeben“ – weder in der App noch im Google Kalender.</span></div>`);
   if (ev.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Serientermin${repeatText(ev) && repeatText(ev) !== 'Serie' ? ` (${esc(repeatText(ev))})` : ''} – Änderungen gelten für die ganze Serie.</span></div>`);
 
   const last = ev.lastChange ? `Letzte Änderung: ${esc(ev.lastChange)}` : '';
@@ -1150,7 +1161,8 @@ function openDetail(ev) {
       : `<button class="btn primary" type="button" data-act="reactivate">${icon('refresh', 20)}Wieder aktivieren</button>
          <button class="btn" type="button" data-act="edit">${icon('pencil', 20)}Bearbeiten</button>`;
     const del = can('admin') ? `<button class="btn danger" type="button" data-act="delete">Löschen</button>` : '';
-    actions = `${main}${last || del ? `<div class="foot-row"><span class="small-note">${last}</span>${del}</div>` : ''}`;
+    const pub = ev.draft && can('admin') ? `<button class="btn publish" type="button" data-act="publish">${icon('check', 20, 2.5)}Freigeben – für alle sichtbar</button>` : '';
+    actions = `${pub}${main}${last || del ? `<div class="foot-row"><span class="small-note">${last}</span>${del}</div>` : ''}`;
   }
 
   openSheet(`<div class="sheet-scroll">
@@ -1191,6 +1203,13 @@ function openDetail(ev) {
           back: () => openDetail(ev),
         })
       : setStatus(ev, S.AKTIV, btn),
+    publish: () => confirmAct({
+      title: 'Termin freigeben?',
+      text: `„${ev.subject}“ erscheint danach im Dienstplan-Kalender und in der App – für alle sichtbar.`,
+      label: 'Freigeben', cls: 'primary',
+      onYes: btn => mutate(btn, 'publishEvents', { eventIds: [ev.eventId] }),
+      back: () => openDetail(ev),
+    }),
     delete: () => confirmAct({
       title: 'Termin löschen?',
       text: `„${ev.subject}“ wird aus dem Kalender entfernt. Wenn er nur ausfällt, ist „Absagen“ meist besser – dann sehen es alle.`,
@@ -1200,6 +1219,66 @@ function openDetail(ev) {
     }),
   };
   sheetEl.querySelectorAll('[data-act]').forEach(b => (b.onclick = () => handlers[b.dataset.act](b)));
+}
+
+/** Entwürfe auswählen und freigeben (in Paketen zu 100). */
+function openPublishSheet(drafts) {
+  const list = drafts.slice().sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || '')));
+  const chosen = new Set(list.map(e => e.eventId));
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <div class="sheet-head"><div><h2 id="sheetTitle">Entwürfe freigeben</h2></div>${closeBtn()}</div>
+      <p class="sub">Freigegebene Termine erscheinen im Dienstplan-Kalender und in der App – für alle sichtbar.</p>
+      <div class="group-box pub-list">${list.map(e => `
+        <label class="opt">
+          <input type="checkbox" data-pub="${esc(e.eventId)}" checked>
+          <span class="grow"><b>${esc(e.subject)}</b><small>${esc(`${wdShort(e.date)} ${fmt(e.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}${e.allDay ? ' · ganztägig' : ` · ${e.start} Uhr`}`)}</small></span>
+        </label>`).join('')}</div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn small" type="button" data-close style="flex:1">Abbrechen</button>
+      <button class="btn primary" type="button" id="pubOk" style="flex:2"></button>
+    </div>`);
+  bindClose();
+  const upd = () => {
+    const n = chosen.size;
+    $('#pubOk').textContent = `${n} ${n === 1 ? 'Termin' : 'Termine'} freigeben`;
+    $('#pubOk').disabled = !n;
+  };
+  sheetEl.querySelectorAll('[data-pub]').forEach(c => (c.onchange = () => { if (c.checked) chosen.add(c.dataset.pub); else chosen.delete(c.dataset.pub); upd(); }));
+  upd();
+  $('#pubOk').onclick = e => publishDrafts([...chosen], e.currentTarget);
+}
+
+async function publishDrafts(ids, btn) {
+  if (state.busy || !ids.length) return;
+  state.busy = true;
+  renderHeader();
+  const buttons = sheetEl.querySelectorAll('button, input');
+  buttons.forEach(b => (b.disabled = true));
+  const label = btn ? btn.innerHTML : '';
+  if (btn) btn.innerHTML = '<span class="spin"></span>Wird freigegeben…';
+  let d = null, published = 0, failed = 0;
+  try {
+    for (let i = 0; i < ids.length; i += 100) {
+      d = await api('publishEvents', { eventIds: ids.slice(i, i + 100) });
+      published += d.published || 0;
+      failed += (d.failed || []).length;
+    }
+    applyData(d);
+    state.busy = false;
+    closeSheet();
+    render();
+    toast(`${published} ${published === 1 ? 'Termin' : 'Termine'} freigegeben – jetzt für alle sichtbar${failed ? `, ${failed} Fehler` : ''}.`, failed > 0);
+  } catch (e) {
+    state.busy = false;
+    if (e.auth) { closeSheet(true); return logout(e.message); }
+    if (d) applyData(d);
+    buttons.forEach(b => (b.disabled = false));
+    if (btn) btn.innerHTML = label;
+    renderHeader();
+    toast(e.message, true);
+  }
 }
 
 function confirmAct(o) {
@@ -1389,6 +1468,11 @@ function openForm(ev, opts) {
       <div id="fCats">${chips()}</div>
       <label class="field">Beschreibung<textarea id="fDesc" rows="2" placeholder="z. B. PA mitbringen">${esc(e.description)}</textarea></label>
       ${ev && ev.recurring ? `<div class="note">${icon('series', 18)}<span>Serientermin – Änderungen gelten für die ganze Serie.</span></div>` : ''}
+      ${isNew && can('admin') && ROLE_RANK[state.role] ? `<label class="switch-row">
+        <span>Als Entwurf anlegen<small class="switch-sub">erst nach „Freigeben“ für alle sichtbar</small></span>
+        <span class="switch"><input type="checkbox" id="fDraft" role="switch"><span class="track"></span><span class="knob"></span></span>
+      </label>` : ''}
+      ${ev && ev.draft ? `<div class="note draft">${icon('pencil', 18)}<span>Entwurf – die Mannschaft sieht ihn erst nach „Freigeben“.</span></div>` : ''}
     </div>
     <div class="sheet-foot">
       <button class="btn small" type="button" id="fBack" style="flex:1">Abbrechen</button>
@@ -1511,6 +1595,7 @@ function openForm(ev, opts) {
       category,
       recurrence: buildRule(rep, $('#fAll').checked),
     };
+    if ($('#fDraft') && $('#fDraft').checked) data.draft = true;
     if (rep.freq === 'WEEKLY' && !rep.days.length) return toast('Bitte mindestens einen Wochentag wählen.', true);
     if (rep.freq === 'MONTHLY' && rep.monthMode === 'weekday' && !rep.ords.length) return toast('Bitte wählen, der wievielte Wochentag im Monat.', true);
     if (rep.freq !== 'NONE' && rep.freq !== 'CUSTOM' && data.date) {

@@ -9,6 +9,7 @@ const KEY_CODE = 'dienstplan.code';
 const KEY_DATA = 'dienstplan.data';
 const KEY_THEME = 'dienstplan.theme';
 const KEY_VIEW = 'dienstplan.view';
+const KEY_FZ = 'dienstplan.fz';
 const KEY_SWIPE_HINT = 'dienstplan.swipeHintSeen';
 
 // Vorlagen für „Neuer Termin“ (V2 8.5) – aus config.js, sonst diese Vorgabe
@@ -33,6 +34,7 @@ const state = {
   codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
   view: 'list', weekStart: null, selDay: null, // Wochenansicht (Etappe 4)
   saving: {}, // Karten, die gerade per Wischen geändert werden: key → Text
+  fz: null, fzFilter: '', fzBusy: false, fzError: null, fzShowUnassigned: false, // Fahrzeuge (V4)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -450,7 +452,7 @@ function renderHeader() {
   } else {
     offlineEl.hidden = true;
   }
-  $('#btnNew').hidden = !can('write') || (state.view === 'table' && tbl.selected.size > 0);
+  $('#btnNew').hidden = !can('write') || state.view === 'fz' || (state.view === 'table' && tbl.selected.size > 0);
 }
 
 /* ---------- Liste (V2, Kapitel 8.1) ---------- */
@@ -467,12 +469,17 @@ function render() {
   $('#btnTable').hidden = !tableAllowed();
   const week = state.view === 'week';
   const table = state.view === 'table';
+  const fz = state.view === 'fz';
   $('#weekHead').hidden = !week;
   $('#searchBox').hidden = week;
+  $('#q').placeholder = fz ? 'Buchungen durchsuchen' : 'Termine durchsuchen';
+  $('#q').setAttribute('aria-label', $('#q').placeholder);
+  listEl.setAttribute('aria-label', fz ? 'Fahrzeugbuchungen' : 'Termine');
   document.querySelectorAll('.seg [data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
   listEl.classList.toggle('week-list', week);
   listEl.classList.toggle('table-list', table);
   document.body.classList.toggle('is-table', table);
+  if (fz) return renderFz();
   if (week && state.loadedAt) return renderWeek();
   if (table && state.loadedAt) return renderTable();
   if (!state.loadedAt) {
@@ -733,10 +740,11 @@ function renderWeek() {
 }
 
 function setView(view) {
-  state.view = view === 'week' || (view === 'table' && tableAllowed()) ? view : 'list';
+  state.view = view === 'week' || view === 'fz' || (view === 'table' && tableAllowed()) ? view : 'list';
   store.set(KEY_VIEW, state.view);
   render();
   window.scrollTo(0, 0);
+  if (state.view === 'fz' && (!state.fz || Date.now() - state.fz.loadedAt > 60000)) loadFz();
 }
 
 function shiftWeek(n) {
@@ -754,6 +762,183 @@ function scrollToDay(d) {
   if (!row) return;
   const smooth = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   row.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+}
+
+/* ---------- Fahrzeuge (docs/Fahrzeugbuchung-Spezifikation.md) ---------- */
+
+async function loadFz(fresh) {
+  if (state.fzBusy) return;
+  state.fzBusy = true;
+  const reload = $('#btnReload');
+  reload.classList.add('spinning');
+  reload.setAttribute('aria-busy', 'true');
+  if (!state.fz && state.view === 'fz') {
+    listEl.innerHTML = `<div class="loading" role="status"><span class="spin"></span>Lade Fahrzeugbelegung…</div>`;
+  }
+  try {
+    const d = await api('getVehicles', fresh === true ? { fresh: true } : {});
+    state.fz = {
+      vehicles: d.vehicles || [], bookings: d.bookings || [], unassigned: d.unassigned || null,
+      range: d.range || null, loadedAt: Date.now(),
+    };
+    state.fzError = null;
+    store.set(KEY_FZ, JSON.stringify(state.fz));
+  } catch (e) {
+    if (e.auth) { state.fzBusy = false; return logout(e.message); }
+    state.fzError = e;
+  } finally {
+    state.fzBusy = false;
+    reload.classList.remove('spinning');
+    reload.removeAttribute('aria-busy');
+  }
+  if (state.view === 'fz') render();
+}
+
+const fzEnd = b => b.endDate || b.date;
+const fzVehicles = b => b.vehicles.join(' + ');
+
+function fzTimeText(b) {
+  if (b.allDay) return b.endDate && b.endDate !== b.date ? `Ganztägig bis ${wdDayMonth(b.endDate)}` : 'Ganztägig';
+  let t = `${b.start}–${b.end} Uhr`;
+  if (b.endDate && b.endDate !== b.date) t += ` (bis ${wdDayMonth(b.endDate)})`;
+  return t;
+}
+
+function fzMatches(b, q) {
+  return !q || `${b.vehicles.join(' ')} ${b.purpose} ${b.contact} ${b.title} ${b.location}`.toLowerCase().includes(q);
+}
+
+function vchips(b) {
+  return b.vehicles.map(v => `<span class="vchip">${esc(v)}</span>`).join('');
+}
+
+function fzCardHtml(b, isToday) {
+  const cls = ['card', 'fzcard'];
+  if (isToday) cls.push('is-today');
+  if (b.state === 'requested') cls.push('is-draft');
+  if (b.state === 'rejected') cls.push('is-cancelled');
+  const day = b.date < todayIso() && fzEnd(b) >= todayIso() ? todayIso() : b.date;
+  const meta = [fzTimeText(b), b.contact ? `ASP ${b.contact}` : ''].filter(Boolean).map(esc).join(' · ');
+  const badges = [];
+  if (b.state === 'requested') badges.push(`<span class="badge draft">Angefragt</span>`);
+  if (b.state === 'rejected') badges.push(`<span class="badge off">${icon('x', 12, 2.5)}Abgelehnt</span>`);
+  if (b.recurring) badges.push(`<span class="badge">${icon('series', 12, 2.5)}Serie</span>`);
+  return `<button class="${cls.join(' ')}" type="button" data-fz="${esc(b.id)}"
+      aria-label="${esc(`${fzVehicles(b)}: ${b.purpose || 'ohne Zweck'}, ${longDate(b.date)}, ${fzTimeText(b)}${b.contact ? ', Ansprechpartner ' + b.contact : ''}`)}">
+    <span class="tile" aria-hidden="true"><span class="wd">${esc(wdShort(day))}</span><span class="d">${toDate(day).getDate()}</span><span class="m">${esc(fmt(day, { month: 'short' }).replace('.', ''))}</span></span>
+    <span class="card-body" aria-hidden="true">
+      <span class="vchips">${vchips(b)}</span>
+      <span class="card-title">${esc(b.purpose || 'Ohne Zweck')}</span>
+      <span class="card-meta">${meta}</span>
+      ${badges.length ? `<span class="badges">${badges.join('')}</span>` : ''}
+    </span>
+  </button>`;
+}
+
+function renderFz() {
+  const fz = state.fz;
+  if (!fz) {
+    if (state.fzError) {
+      listEl.innerHTML = `<div class="empty">${icon('wifiOff', 32)}<p>${esc(state.fzError.message)}</p>
+        <button class="btn small" type="button" id="fzRetry">${icon('refresh', 18)}Nochmal versuchen</button></div>`;
+      $('#fzRetry').onclick = () => loadFz(true);
+    } else {
+      listEl.innerHTML = `<div class="loading" role="status"><span class="spin"></span>Lade Fahrzeugbelegung…</div>`;
+    }
+    return;
+  }
+  const today = todayIso();
+  const q = state.q.trim().toLowerCase();
+  if (state.fzFilter && !fz.vehicles.includes(state.fzFilter)) state.fzFilter = '';
+  const upcoming = fz.bookings.filter(b => fzEnd(b) >= today);
+  const count = v => upcoming.filter(b => b.vehicles.includes(v)).length;
+
+  let html = `<div class="fz-filter" role="group" aria-label="Nach Fahrzeug filtern">
+    <button type="button" data-fzf="" aria-pressed="${!state.fzFilter}">Alle</button>
+    ${fz.vehicles.map(v => `<button type="button" data-fzf="${esc(v)}" aria-pressed="${state.fzFilter === v}"${count(v) ? '' : ' class="none"'}>${esc(v)}</button>`).join('')}
+  </div>`;
+
+  if (state.fzError) {
+    html += `<div class="note warn" role="status">${icon('wifiOff', 18)}<span>Nicht aktuell – Stand ${timeNow(fz.loadedAt)}. ${esc(state.fzError.message)}</span></div>`;
+  }
+
+  if (fz.unassigned && fz.unassigned.length) {
+    const open = state.fzShowUnassigned;
+    html += `<div class="draft-bar" role="status">${icon('info', 18)}<span class="grow"><b>${fz.unassigned.length} ${fz.unassigned.length === 1 ? 'Eintrag' : 'Einträge'}</b> ohne erkanntes Fahrzeug</span>
+      <button class="btn small" type="button" id="fzUnBtn" aria-expanded="${open}">${open ? 'Ausblenden' : 'Anzeigen'}</button></div>`;
+    if (open) {
+      html += `<div class="fz-unassigned">${fz.unassigned.map(b =>
+        `<button type="button" class="fz-un" data-fz="${esc(b.id)}"><b>${esc(wdDayMonth(b.date))}</b> ${esc(b.allDay ? 'ganztägig' : b.start)} · ${esc(b.title || '(ohne Titel)')}</button>`).join('')}</div>`;
+    }
+  }
+
+  const list = upcoming.filter(b => (!state.fzFilter || b.vehicles.includes(state.fzFilter)) && fzMatches(b, q));
+  const wEnd = addDays(weekStart(today), 6);
+  const nwEnd = addDays(wEnd, 7);
+  const groups = [];
+  const groupFor = (key, label) => {
+    let g = groups.find(x => x.key === key);
+    if (!g) { g = { key, label, items: [] }; groups.push(g); }
+    return g;
+  };
+  for (const b of list) {
+    const day = b.date < today ? today : b.date;
+    if (day === today) groupFor('today', '').items.push(b);
+    else if (day <= wEnd) groupFor('week', 'Diese Woche').items.push(b);
+    else if (day <= nwEnd) groupFor('next', 'Nächste Woche').items.push(b);
+    else groupFor(day.slice(0, 7), fmt(day, { month: 'long', year: 'numeric' })).items.push(b);
+  }
+  for (const g of groups) {
+    html += g.key === 'today'
+      ? `<h2 class="group-today" id="fzToday"><span class="today-tag">HEUTE</span>${esc(fmt(today, { weekday: 'long', day: 'numeric', month: 'long' }))}</h2>`
+      : `<h2 class="group">${esc(g.label)}</h2>`;
+    html += g.items.map(b => fzCardHtml(b, g.key === 'today')).join('');
+  }
+  if (!groups.length) {
+    const what = state.fzFilter ? `für ${state.fzFilter} ` : '';
+    html += `<div class="empty">${icon('truck', 32)}<p>${q ? 'Keine Treffer.' : `Keine kommenden Buchungen ${what}eingetragen.`}</p></div>`;
+  } else if (fz.range && !q) {
+    html += `<p class="small-note center fz-range">Gezeigt bis ${esc(fmt(fz.range.to, { day: '2-digit', month: '2-digit', year: 'numeric' }))} · Quelle: Google Kalender</p>`;
+  }
+
+  listEl.innerHTML = html;
+  listEl.querySelectorAll('[data-fzf]').forEach(btn => (btn.onclick = () => {
+    state.fzFilter = btn.dataset.fzf;
+    renderFz();
+  }));
+  const un = $('#fzUnBtn');
+  if (un) un.onclick = () => { state.fzShowUnassigned = !state.fzShowUnassigned; renderFz(); };
+}
+
+function openFzDetail(id) {
+  const fz = state.fz;
+  if (!fz) return;
+  const b = fz.bookings.find(x => x.id === id) || (fz.unassigned || []).find(x => x.id === id);
+  if (!b) return;
+  const notes = [];
+  if (!b.vehicles.length) notes.push(`<div class="note warn">${icon('info', 18)}<span>Im Titel wurde kein Fahrzeug erkannt. Zuordnen geht ab der nächsten Ausbaustufe; bis dahin bitte den Titel im Google Kalender anpassen (Fahrzeug vorne, z. B. „MTW – …“).</span></div>`);
+  if (b.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Teil einer Serie.</span></div>`);
+  if (b.state === 'requested') notes.push(`<div class="note draft">${icon('pencil', 18)}<span><b>Angefragt</b> – ein Admin muss die Buchung noch bestätigen.</span></div>`);
+  if (b.state === 'rejected') notes.push(`<div class="note">${icon('ban', 18)}<span><b>Abgelehnt</b>${b.reason ? `: ${esc(b.reason)}` : ''}</span></div>`);
+  openSheet(`<div class="sheet-scroll">
+    ${grip}
+    <div class="sheet-head">
+      <div>
+        ${b.vehicles.length ? `<span class="vchips">${vchips(b)}</span>` : ''}
+        <h2 id="sheetTitle">${esc(b.purpose || b.title || 'Ohne Zweck')}</h2>
+      </div>
+      ${closeBtn()}
+    </div>
+    <div class="facts">
+      <div class="fact">${icon('calendar', 20)}<div><strong>${esc(relDayPrefix(b.date) + longDate(b.date))}</strong><span class="muted">${esc(fzTimeText(b))}</span></div></div>
+      ${b.contact ? `<div class="fact">${icon('user', 20)}<div><strong>${esc(b.contact)}</strong><span class="muted">Ansprechpartner</span></div></div>` : ''}
+      ${b.location ? `<div class="fact">${icon('pin', 20)}<span>${esc(b.location)}</span></div>` : ''}
+      ${b.source === 'google' ? `<div class="fact">${icon('note', 20)}<div><strong>${esc(b.title)}</strong><span class="muted">Eintrag im Google Kalender</span></div></div>` : ''}
+    </div>
+    ${notes.join('')}
+    <button class="btn" type="button" data-close>Schließen</button>
+  </div>`);
+  bindClose();
 }
 
 /* ---------- Gesten (V2, Kapitel 8.6) ---------- */
@@ -2156,12 +2341,14 @@ $('#loginForm').addEventListener('submit', async e => {
 
 listEl.addEventListener('click', e => {
   if (swipe.moved || cardSwipe.moved || ptr.moved) return; // war eine Geste, kein Antippen
+  const fzc = e.target.closest('[data-fz]');
+  if (fzc) return openFzDetail(fzc.dataset.fz);
   const card = e.target.closest('.card, .wcard');
   if (card) openDetail(state.events[+card.dataset.i]);
 });
 $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
 $('#btnNew').onclick = () => openForm(null);
-$('#btnReload').onclick = () => load(true);
+$('#btnReload').onclick = () => (state.view === 'fz' ? loadFz(true) : load(true));
 $('#btnMore').onclick = openMore;
 document.querySelectorAll('.seg [data-view]').forEach(b => (b.onclick = () => setView(b.dataset.view)));
 $('#weekPrev').onclick = () => shiftWeek(-1);
@@ -2257,6 +2444,15 @@ window.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') swi
 window.addEventListener('pointerup', e => { if (e.pointerType === 'mouse') swipeEnd(); });
 // "Heute": springt zu heute bzw. zum nächsten kommenden Termin
 $('#btnToday').onclick = () => {
+  if (state.view === 'fz') {
+    state.q = '';
+    $('#q').value = '';
+    renderFz();
+    const target = $('#fzToday') || listEl.querySelector('.group');
+    if (target) target.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    else window.scrollTo(0, 0);
+    return;
+  }
   if (state.view === 'week') {
     state.weekStart = weekStart(todayIso());
     state.selDay = todayIso();
@@ -2289,7 +2485,9 @@ $('#btnToday').onclick = () => {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && store.get(KEY_CODE) && !state.busy &&
-      state.loadedAt && Date.now() - state.loadedAt > 60000) load();
+      state.loadedAt && Date.now() - state.loadedAt > 60000) {
+    if (state.view === 'fz') loadFz(); else load();
+  }
 });
 
 if ('serviceWorker' in navigator) {
@@ -2320,7 +2518,7 @@ function cleanupBeta() {
 (function start() {
   applyTheme();
   const savedView = store.get(KEY_VIEW);
-  state.view = savedView === 'week' || savedView === 'table' ? savedView : 'list';
+  state.view = savedView === 'week' || savedView === 'table' || savedView === 'fz' ? savedView : 'list';
   hydrateIcons(document);
   tableInit();
 
@@ -2342,9 +2540,12 @@ function cleanupBeta() {
   try {
     const cached = JSON.parse(store.get(KEY_DATA) || 'null');
     if (cached && cached.events) Object.assign(state, cached);
+    const fzCached = JSON.parse(store.get(KEY_FZ) || 'null');
+    if (fzCached && fzCached.bookings) state.fz = fzCached;
   } catch (e) { /* egal */ }
 
   showApp();
   render();
   load();
+  if (state.view === 'fz') loadFz();
 })();

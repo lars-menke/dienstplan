@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '6.4 (automatisch bereitgestellt)',
+  VERSION: '7.0 (Fahrzeuge anzeigen)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -81,6 +81,8 @@ function handleAction_(action, data, user) {
   checkTimezone_(true);
   // Termine und Kategorien: direkt im Google Kalender (Kalender.gs)
   if (V3_ACTIONS.includes(action)) return handleActionV3_(action, data, user);
+  // Fahrzeugbuchung (Fahrzeuge.gs)
+  if (FZ_ACTIONS.includes(action)) return handleFahrzeuge_(action, data, user);
   switch (action) {
     // Verwaltung (V2, Kapitel 5.2) – nur Admin
     case 'listCodes': return listCodes_(user);
@@ -113,6 +115,7 @@ function json_(obj) {
 function requiredRole_(action, data) {
   switch (action) {
     case 'getData':
+    case 'getVehicles':
       return 'read';
     case 'saveEvent':
     case 'saveEvents':

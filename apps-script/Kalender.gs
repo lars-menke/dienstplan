@@ -25,7 +25,7 @@ const V3 = {
   DRAFT_CAL_NAME: 'Dienstplan – Entwürfe (nicht freigegeben)',
   DRAFT_MARK: 'ENTWURF',
 
-  CACHE_KEY: 'dpv3data',
+  CACHE_KEY: 'dpv3data2', // 2: mit updatedAt (Neu/Geändert-Markierung)
   CACHE_SECONDS: 300,          // so alt darf die Liste werden, dann werden die Änderungen nachgeholt
   CACHE_KEEP_SECONDS: 6 * 3600, // so lange bleibt die Liste gespeichert (Höchstwert von Google)
   FULL_READ_MS: 6 * 3600 * 1000, // spätestens dann wird wieder komplett gelesen
@@ -816,6 +816,7 @@ function v3ToApp_(ev, f) {
     synced: true,
     recurrence: f.recurrence || '',
     lastChange: v3LastChange_(ev, f),
+    updatedAt: Date.parse(ev.updated || '') || 0, // für „Neu/Geändert“ in der App
   };
 }
 

@@ -13,12 +13,12 @@
 const FZ = {
   CAL_NAME: 'Fahrzeuge 18-2',
   PROP_CAL: 'FAHRZEUG_KALENDER',
-  CACHE_KEY: 'fzdata',
+  CACHE_KEY: 'fzdata2',
   CACHE_SECONDS: 120,
   CACHE_CHUNK_CHARS: 40000,
   PAST_DAYS: 30,     // so weit zurück wird gelesen
   FUTURE_DAYS: 400,  // so weit voraus
-  FIELDS: 'nextPageToken,items(id,status,summary,location,start,end,recurringEventId,eventType,transparency,extendedProperties)',
+  FIELDS: 'nextPageToken,items(id,status,updated,summary,location,start,end,recurringEventId,eventType,transparency,extendedProperties)',
   MAX_PURPOSE: 120,
   MAX_CONTACT: 60,
   SERIES_CHECK_DAYS: 366, // so weit werden Serien auf Überschneidungen geprüft
@@ -144,6 +144,7 @@ function fzToBooking_(ev) {
     requestedBy: priv.requestedBy || '',
     decidedBy: priv.decidedBy || '',
     reason: priv.reason || '',
+    updatedAt: Date.parse(ev.updated || '') || 0,
   }, t, info);
 }
 

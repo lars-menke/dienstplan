@@ -34,7 +34,7 @@ const state = {
   codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
   view: 'list', weekStart: null, selDay: null, // Wochenansicht (Etappe 4)
   saving: {}, // Karten, die gerade per Wischen geändert werden: key → Text
-  fz: null, fzFilter: '', fzBusy: false, fzError: null, fzShowUnassigned: false, // Fahrzeuge (V4)
+  canBook: false, fz: null, fzFilter: '', fzBusy: false, fzError: null, fzShowUnassigned: false, // Fahrzeuge (V4)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -134,10 +134,13 @@ async function api(action, data) {
     throw new Error('Unerwartete Antwort vom Server.');
   }
   if (json.role) state.role = json.role;
+  if (json.canBook !== undefined) state.canBook = !!json.canBook;
   if (!json.ok) {
     const err = new Error(json.error || 'Unbekannter Fehler.');
     err.auth = !!json.auth;
     err.forbidden = !!json.forbidden;
+    err.conflict = !!json.conflict;
+    err.canForce = !!json.canForce;
     throw err;
   }
   return json;
@@ -154,7 +157,7 @@ function applyData(d) {
   state.loadError = null;
   store.set(KEY_DATA, JSON.stringify({
     events: state.events, categoryList: state.categoryList,
-    today: state.today, user: state.user, role: state.role, codeCount: state.codeCount, loadedAt: state.loadedAt,
+    today: state.today, user: state.user, role: state.role, canBook: state.canBook, codeCount: state.codeCount, loadedAt: state.loadedAt,
   }));
 }
 
@@ -452,7 +455,14 @@ function renderHeader() {
   } else {
     offlineEl.hidden = true;
   }
-  $('#btnNew').hidden = !can('write') || state.view === 'fz' || (state.view === 'table' && tbl.selected.size > 0);
+  const fab = $('#btnNew');
+  if (state.view === 'fz') {
+    fab.hidden = !state.canBook;
+    fab.innerHTML = `${icon('plus', 20)}${can('admin') && ROLE_RANK[state.role] ? 'Buchen' : 'Anfragen'}`;
+  } else {
+    fab.hidden = !can('write') || (state.view === 'table' && tbl.selected.size > 0);
+    fab.innerHTML = `${icon('plus', 20)}Termin`;
+  }
 }
 
 /* ---------- Liste (V2, Kapitel 8.1) ---------- */
@@ -777,12 +787,7 @@ async function loadFz(fresh) {
   }
   try {
     const d = await api('getVehicles', fresh === true ? { fresh: true } : {});
-    state.fz = {
-      vehicles: d.vehicles || [], bookings: d.bookings || [], unassigned: d.unassigned || null,
-      range: d.range || null, loadedAt: Date.now(),
-    };
-    state.fzError = null;
-    store.set(KEY_FZ, JSON.stringify(state.fz));
+    applyFz(d);
   } catch (e) {
     if (e.auth) { state.fzBusy = false; return logout(e.message); }
     state.fzError = e;
@@ -794,7 +799,18 @@ async function loadFz(fresh) {
   if (state.view === 'fz') render();
 }
 
+function applyFz(d) {
+  state.fz = {
+    vehicles: d.vehicles || [], bookings: d.bookings || [], unassigned: d.unassigned || null,
+    range: d.range || null, loadedAt: Date.now(),
+  };
+  state.fzError = null;
+  store.set(KEY_FZ, JSON.stringify(state.fz));
+}
+
 const fzEnd = b => b.endDate || b.date;
+const isAdmin = () => can('admin') && !!ROLE_RANK[state.role];
+const fzMine = b => b.source === 'app' && b.requestedBy === state.user;
 const fzVehicles = b => b.vehicles.join(' + ');
 
 function fzTimeText(b) {
@@ -849,14 +865,24 @@ function renderFz() {
   }
   const today = todayIso();
   const q = state.q.trim().toLowerCase();
-  if (state.fzFilter && !fz.vehicles.includes(state.fzFilter)) state.fzFilter = '';
+  if (state.fzFilter && !state.fzFilter.startsWith('@') && !fz.vehicles.includes(state.fzFilter)) state.fzFilter = '';
   const upcoming = fz.bookings.filter(b => fzEnd(b) >= today);
   const count = v => upcoming.filter(b => b.vehicles.includes(v)).length;
+  const pending = upcoming.filter(b => b.state === 'requested');
+  const mine = upcoming.filter(fzMine);
+  if (state.fzFilter === '@open' && !pending.length) state.fzFilter = '';
 
-  let html = `<div class="fz-filter" role="group" aria-label="Nach Fahrzeug filtern">
+  let html = `<div class="fz-filter" role="group" aria-label="Filter">
     <button type="button" data-fzf="" aria-pressed="${!state.fzFilter}">Alle</button>
+    ${isAdmin() && pending.length ? `<button type="button" data-fzf="@open" class="open" aria-pressed="${state.fzFilter === '@open'}">Offen · ${pending.length}</button>` : ''}
+    ${state.canBook && !isAdmin() && mine.length ? `<button type="button" data-fzf="@mine" aria-pressed="${state.fzFilter === '@mine'}">Meine · ${mine.length}</button>` : ''}
     ${fz.vehicles.map(v => `<button type="button" data-fzf="${esc(v)}" aria-pressed="${state.fzFilter === v}"${count(v) ? '' : ' class="none"'}>${esc(v)}</button>`).join('')}
   </div>`;
+
+  if (isAdmin() && pending.length && state.fzFilter !== '@open') {
+    html += `<div class="draft-bar" role="status">${icon('pencil', 18)}<span class="grow"><b>${pending.length} ${pending.length === 1 ? 'Anfrage wartet' : 'Anfragen warten'}</b> auf Bestätigung</span>
+      <button class="btn small" type="button" data-fzf="@open">Ansehen</button></div>`;
+  }
 
   if (state.fzError) {
     html += `<div class="note warn" role="status">${icon('wifiOff', 18)}<span>Nicht aktuell – Stand ${timeNow(fz.loadedAt)}. ${esc(state.fzError.message)}</span></div>`;
@@ -872,7 +898,8 @@ function renderFz() {
     }
   }
 
-  const list = upcoming.filter(b => (!state.fzFilter || b.vehicles.includes(state.fzFilter)) && fzMatches(b, q));
+  const f = state.fzFilter;
+  const list = upcoming.filter(b => (!f || (f === '@open' ? b.state === 'requested' : f === '@mine' ? fzMine(b) : b.vehicles.includes(f))) && fzMatches(b, q));
   const wEnd = addDays(weekStart(today), 6);
   const nwEnd = addDays(wEnd, 7);
   const groups = [];
@@ -895,8 +922,8 @@ function renderFz() {
     html += g.items.map(b => fzCardHtml(b, g.key === 'today')).join('');
   }
   if (!groups.length) {
-    const what = state.fzFilter ? `für ${state.fzFilter} ` : '';
-    html += `<div class="empty">${icon('truck', 32)}<p>${q ? 'Keine Treffer.' : `Keine kommenden Buchungen ${what}eingetragen.`}</p></div>`;
+    const what = f && !f.startsWith('@') ? `für ${f} ` : '';
+    html += `<div class="empty">${icon('truck', 32)}<p>${q ? 'Keine Treffer.' : f === '@mine' ? 'Du hast keine kommenden Anfragen.' : `Keine kommenden Buchungen ${what}eingetragen.`}</p></div>`;
   } else if (fz.range && !q) {
     html += `<p class="small-note center fz-range">Gezeigt bis ${esc(fmt(fz.range.to, { day: '2-digit', month: '2-digit', year: 'numeric' }))} · Quelle: Google Kalender</p>`;
   }
@@ -920,6 +947,26 @@ function openFzDetail(id) {
   if (b.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Teil einer Serie.</span></div>`);
   if (b.state === 'requested') notes.push(`<div class="note draft">${icon('pencil', 18)}<span><b>Angefragt</b> – ein Admin muss die Buchung noch bestätigen.</span></div>`);
   if (b.state === 'rejected') notes.push(`<div class="note">${icon('ban', 18)}<span><b>Abgelehnt</b>${b.reason ? `: ${esc(b.reason)}` : ''}</span></div>`);
+  const meta = [];
+  if (b.source === 'app' && b.requestedBy) meta.push(`Angefragt von ${b.requestedBy}`);
+  if (b.state === 'confirmed' && b.decidedBy && b.decidedBy !== b.requestedBy) meta.push(`bestätigt von ${b.decidedBy}`);
+  if (b.state === 'rejected' && b.decidedBy) meta.push(`abgelehnt von ${b.decidedBy}`);
+  const admin = isAdmin();
+  const own = fzMine(b);
+  const ref = b.seriesId || b.id;
+  const editable = !b.recurring && b.vehicles.length && (admin || (own && b.state === 'requested'));
+  const acts = [];
+  if (admin && b.state === 'requested') {
+    acts.push(`<div class="tiles">
+      <button class="tile-btn ok" type="button" data-fza="confirm">${icon('check', 22, 2.5)}Bestätigen</button>
+      <button class="tile-btn" type="button" data-fza="reject">${icon('ban', 22)}Ablehnen</button></div>`);
+  }
+  if (editable) acts.push(`<button class="btn${admin && b.state === 'requested' ? '' : ' primary'}" type="button" data-fza="edit">${icon('pencil', 20)}Bearbeiten</button>`);
+  if (!b.vehicles.length && admin && !b.recurring) acts.push(`<button class="btn primary" type="button" data-fza="edit">${icon('truck', 20)}Fahrzeuge zuordnen</button>`);
+  let del = '';
+  if (admin) del = `<button class="btn danger" type="button" data-fza="delete">${b.recurring ? 'Ganze Serie löschen' : 'Löschen'}</button>`;
+  else if (own && b.state !== 'confirmed') del = `<button class="btn danger" type="button" data-fza="delete">${b.state === 'rejected' ? 'Entfernen' : 'Anfrage zurückziehen'}</button>`;
+  if (b.recurring && (admin || own)) notes.push(`<div class="note">${icon('series', 18)}<span>Bestätigen, Ablehnen und Löschen gelten für die ganze Serie. Ändern geht nur im Google Kalender.</span></div>`);
   openSheet(`<div class="sheet-scroll">
     ${grip}
     <div class="sheet-head">
@@ -936,9 +983,200 @@ function openFzDetail(id) {
       ${b.source === 'google' ? `<div class="fact">${icon('note', 20)}<div><strong>${esc(b.title)}</strong><span class="muted">Eintrag im Google Kalender</span></div></div>` : ''}
     </div>
     ${notes.join('')}
-    <button class="btn" type="button" data-close>Schließen</button>
+    ${acts.join('')}
+    ${meta.length || del ? `<div class="foot-row"><span class="small-note">${esc(meta.join(', '))}</span>${del}</div>` : ''}
+    ${acts.length ? '' : '<button class="btn" type="button" data-close>Schließen</button>'}
   </div>`);
   bindClose();
+  const on = (a, fn) => { const el = sheetEl.querySelector(`[data-fza="${a}"]`); if (el) el.onclick = e => fn(e.currentTarget); };
+  on('edit', () => openFzForm(b));
+  on('confirm', btn => fzMutate(btn, 'decideBooking', { id: ref, decision: 'confirm' }, { onConflict: (e, retry) => fzForceAsk(e, 'Trotzdem bestätigen', () => retry({ force: true }), () => openFzDetail(id)) }));
+  on('reject', () => openFzReject(b));
+  on('delete', () => confirmAct({
+    title: admin ? (b.recurring ? 'Ganze Serie löschen?' : 'Buchung löschen?') : (b.state === 'rejected' ? 'Anfrage entfernen?' : 'Anfrage zurückziehen?'),
+    text: `${fzVehicles(b) || b.title} · ${b.purpose || b.title} · ${wdDayMonth(b.date)}${b.recurring ? ' – alle Termine der Serie' : ''}. Der Eintrag verschwindet auch aus dem Google Kalender.`,
+    label: admin ? 'Löschen' : (b.state === 'rejected' ? 'Entfernen' : 'Zurückziehen'), cls: 'primary',
+    onYes: btn => fzMutate(btn, 'cancelBooking', { id: ref }),
+    back: () => openFzDetail(id),
+  }));
+}
+
+/** Änderung an Buchungen; opts.onConflict(err, retry) bei Überschneidung. */
+async function fzMutate(btn, action, data, opts = {}) {
+  if (state.busy) return;
+  state.busy = true;
+  renderHeader();
+  const controls = sheetEl.querySelectorAll('button, input, textarea, select');
+  controls.forEach(c => (c.disabled = true));
+  const label = btn.innerHTML;
+  btn.innerHTML = '<span class="spin"></span>Wird gespeichert…';
+  try {
+    const d = await api(action, data);
+    applyFz(d);
+    state.busy = false;
+    closeSheet();
+    render();
+    toast(d.message || 'Gespeichert.');
+  } catch (e) {
+    state.busy = false;
+    renderHeader();
+    if (e.auth) { closeSheet(true); return logout(e.message); }
+    controls.forEach(c => (c.disabled = false));
+    btn.innerHTML = label;
+    if (e.conflict && opts.onConflict) return opts.onConflict(e, extra => fzMutate(btn, action, Object.assign({}, data, extra), opts));
+    toast(e.message, true);
+  }
+}
+
+/** Überschneidung: Admins dürfen nach Rückfrage trotzdem speichern. */
+function fzForceAsk(e, label, yes, back) {
+  if (!e.canForce) return toast(e.message, true);
+  confirmAct({ title: 'Fahrzeug ist schon belegt', text: e.message, label, cls: 'primary', onYes: yes, back });
+}
+
+function openFzReject(b) {
+  openSheet(`<div class="sheet-scroll">
+    ${grip}
+    <div><h2 id="sheetTitle">Anfrage ablehnen</h2><p class="sub">${esc(fzVehicles(b))} · ${esc(b.purpose)} · ${esc(wdDayMonth(b.date))}${b.requestedBy ? ` · von ${esc(b.requestedBy)}` : ''}</p></div>
+    <label class="field">Grund (optional, sieht die anfragende Person)<textarea id="fzReason" rows="2" maxlength="200" placeholder="z. B. Fahrzeug in der Werkstatt" data-autofocus></textarea></label>
+    <div class="actions">
+      <button class="btn primary" type="button" id="fzRejOk">Ablehnen</button>
+      <button class="btn" type="button" id="fzRejBack">Zurück</button>
+    </div>
+  </div>`);
+  $('#fzRejOk').onclick = e => fzMutate(e.currentTarget, 'decideBooking', { id: b.seriesId || b.id, decision: 'reject', reason: $('#fzReason').value.trim() });
+  $('#fzRejBack').onclick = () => openFzDetail(b.id);
+}
+
+/* --- Formular: Anfragen / Buchen / Bearbeiten --- */
+
+/** Zeitraum in ms (lokal): [von, bis) */
+function fzRange(date, endDate, allDay, start, end) {
+  const at = (iso, hm) => { const [y, m, d] = iso.split('-').map(Number); const [h, mi] = (hm || '00:00').split(':').map(Number); return new Date(y, m - 1, d, h, mi).getTime(); };
+  if (allDay) return [at(date), at(addDays(endDate || date, 1))];
+  return [at(date, start), end === '24:00' ? at(addDays(endDate || date, 1)) : at(endDate || date, end)];
+}
+
+/** Belegungen aus den geladenen Daten, die sich mit dem Zeitraum überschneiden (ohne self, ohne abgelehnte). */
+function fzClashes(range, selfRef) {
+  if (!state.fz || !range) return [];
+  return state.fz.bookings.filter(b => b.state !== 'rejected' && b.id !== selfRef && (!selfRef || b.seriesId !== selfRef) &&
+    (() => { const r = fzRange(b.date, b.endDate, b.allDay, b.start, b.end); return r[0] < range[1] && range[0] < r[1]; })());
+}
+
+/** b: bestehende Buchung (Bearbeiten), draft: zuletzt eingegebene Werte (nach einer Rückfrage) */
+function openFzForm(b, draft) {
+  const isNew = !b;
+  const admin = isAdmin();
+  const today = todayIso();
+  const e = b ? Object.assign({}, b, { end: b.end === '24:00' ? '23:59' : b.end }) : {
+    date: today, endDate: today, allDay: false, start: '18:00', end: '22:00', vehicles: state.fzFilter && !state.fzFilter.startsWith('@') ? [state.fzFilter] : [],
+    purpose: '', contact: state.user || '',
+  };
+  if (b && b.source === 'google' && !b.purpose) e.purpose = b.title;
+  if (draft) Object.assign(e, draft, { end: draft.end || e.end, start: draft.start || e.start });
+  const sel = new Set(e.vehicles);
+  const title = isNew ? (admin ? 'Fahrzeug buchen' : 'Fahrzeug anfragen') : (b.vehicles.length ? 'Buchung bearbeiten' : 'Fahrzeuge zuordnen');
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <h2 id="sheetTitle">${title}</h2>
+      <div class="stack"><span class="label" id="fzVLabel">Fahrzeuge</span>
+        <div class="chips fz-pick" role="group" aria-labelledby="fzVLabel">${state.fz.vehicles.map(v =>
+          `<button class="chip" type="button" data-v="${esc(v)}" aria-pressed="${sel.has(v)}">${esc(v)}<span class="busy-dot" aria-hidden="true"></span></button>`).join('')}</div>
+        <p class="small-note" id="fzFree" aria-live="polite"></p>
+      </div>
+      <label class="switch-row">Ganztägig
+        <span class="switch"><input type="checkbox" id="fzAll" role="switch" ${e.allDay ? 'checked' : ''}><span class="track"></span><span class="knob"></span></span>
+      </label>
+      <div class="grid2">
+        <label class="field">Datum<input type="date" id="fzDate" value="${esc(e.date)}" min="${isNew ? today : ''}"></label>
+        <label class="field">Bis<input type="date" id="fzEnd" value="${esc(e.endDate || e.date)}"></label>
+        <label class="field" data-time>Beginn<input type="time" id="fzStart" value="${esc(e.start)}"></label>
+        <label class="field" data-time>Ende<input type="time" id="fzStop" value="${esc(e.end)}"></label>
+      </div>
+      <label class="field">Zweck<input id="fzPurpose" value="${esc(e.purpose)}" maxlength="120" placeholder="z. B. Lehrgang FTZ" autocomplete="off"></label>
+      <label class="field">Ansprechpartner (ASP)<input id="fzContact" value="${esc(e.contact)}" maxlength="60" autocomplete="name"></label>
+      ${isNew ? `<fieldset class="rep-box">
+        <legend class="label">Wiederholung</legend>
+        <div class="rep-row">
+          <select id="fzRep" aria-label="Wiederholung"><option value="">Keine</option><option value="W1">Jede Woche</option><option value="W2">Alle 2 Wochen</option><option value="D1">Jeden Tag</option></select>
+          <label class="rep-every" id="fzUntilWrap" hidden>bis <input type="date" id="fzUntil" aria-label="Letzter Termin"></label>
+        </div>
+      </fieldset>` : ''}
+      <div class="note${admin ? '' : ' draft'}">${icon(admin ? 'info' : 'pencil', 18)}<span>${admin
+        ? 'Als Admin buchst du direkt – die Buchung gilt sofort.'
+        : 'Deine Anfrage steht sofort im Fahrzeugkalender (als „Angefragt“). Ein Admin bestätigt sie.'}</span></div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn small" type="button" id="fzBack" style="flex:1">Abbrechen</button>
+      <button class="btn primary" type="button" id="fzOk" style="flex:2">${isNew ? (admin ? 'Buchen' : 'Anfragen') : 'Speichern'}</button>
+    </div>`);
+
+  const val = id => $(id).value;
+  const range = () => {
+    const all = $('#fzAll').checked;
+    const d = val('#fzDate'), ed = val('#fzEnd') || d;
+    if (!d || (!all && (!val('#fzStart') || !val('#fzStop')))) return null;
+    const r = fzRange(d, ed < d ? d : ed, all, val('#fzStart'), val('#fzStop'));
+    return r[1] > r[0] ? r : null;
+  };
+  const selfRef = b ? b.id : null;
+  const update = () => {
+    sheetEl.querySelectorAll('[data-time]').forEach(el => (el.hidden = $('#fzAll').checked));
+    const clashes = fzClashes(range(), selfRef);
+    sheetEl.querySelectorAll('[data-v]').forEach(btn => {
+      const busy = clashes.filter(c => c.vehicles.includes(btn.dataset.v));
+      btn.classList.toggle('busy', busy.length > 0);
+      btn.setAttribute('aria-label', `${btn.dataset.v}${busy.length ? ', belegt' : ''}`);
+    });
+    const hit = clashes.filter(c => c.vehicles.some(v => sel.has(v)));
+    const free = $('#fzFree');
+    if (!range()) free.textContent = '';
+    else if (hit.length) {
+      const c = hit[0];
+      free.innerHTML = `<span class="fz-clash">${icon('info', 14)}${esc(c.vehicles.filter(v => sel.has(v)).join(' + '))} ist belegt: ${esc(c.purpose || c.title)} (${esc(c.allDay ? 'ganztägig' : `${c.start}–${c.end}`)}${c.state === 'requested' ? ', angefragt' : ''})${hit.length > 1 ? ` und ${hit.length - 1} weitere` : ''}</span>`;
+    } else free.textContent = sel.size ? 'Im gewählten Zeitraum frei.' : 'Punkt = im gewählten Zeitraum schon belegt.';
+  };
+  sheetEl.querySelectorAll('[data-v]').forEach(btn => (btn.onclick = () => {
+    const v = btn.dataset.v;
+    if (sel.has(v)) sel.delete(v); else sel.add(v);
+    btn.setAttribute('aria-pressed', String(sel.has(v)));
+    update();
+  }));
+  ['#fzAll', '#fzDate', '#fzEnd', '#fzStart', '#fzStop'].forEach(id => $(id).addEventListener('input', update));
+  $('#fzAll').onchange = update;
+  $('#fzDate').addEventListener('change', () => { if (val('#fzEnd') < val('#fzDate')) $('#fzEnd').value = val('#fzDate'); update(); });
+  const repSel = $('#fzRep');
+  if (repSel) repSel.onchange = () => {
+    $('#fzUntilWrap').hidden = !repSel.value;
+    if (repSel.value && !val('#fzUntil')) $('#fzUntil').value = addDays(val('#fzDate') || today, repSel.value === 'D1' ? 6 : 56);
+  };
+  update();
+  $('#fzBack').onclick = () => (b ? openFzDetail(b.id) : closeSheet());
+  $('#fzOk').onclick = ev => {
+    const all = $('#fzAll').checked;
+    const data = {
+      date: val('#fzDate'), endDate: val('#fzEnd') || val('#fzDate'), allDay: all,
+      start: all ? '' : val('#fzStart'), end: all ? '' : val('#fzStop'),
+      vehicles: state.fz.vehicles.filter(v => sel.has(v)),
+      purpose: val('#fzPurpose').trim(), contact: val('#fzContact').trim(),
+    };
+    if (b) data.id = b.id;
+    if (!data.vehicles.length) return toast('Bitte mindestens ein Fahrzeug wählen.', true);
+    if (!data.date) return toast('Bitte ein Datum wählen.', true);
+    if (!all && (!data.start || !data.end)) return toast('Bitte Beginn und Ende eingeben.', true);
+    if (!data.purpose) { $('#fzPurpose').focus(); return toast('Bitte den Zweck angeben.', true); }
+    if (!data.contact) { $('#fzContact').focus(); return toast('Bitte einen Ansprechpartner (ASP) angeben.', true); }
+    if (repSel && repSel.value) {
+      const until = val('#fzUntil');
+      if (!until || until < data.date) return toast('Bitte das Ende der Serie wählen.', true);
+      const [f, n] = [repSel.value[0] === 'D' ? 'DAILY' : 'WEEKLY', +repSel.value[1]];
+      data.recurrence = `RRULE:FREQ=${f}${n > 1 ? `;INTERVAL=${n}` : ''};UNTIL=${until.replace(/-/g, '')}${all ? '' : 'T235959Z'}`;
+    }
+    fzMutate(ev.currentTarget, 'saveBooking', data, {
+      onConflict: (err, retry) => fzForceAsk(err, 'Trotzdem buchen', () => retry({ force: true }), () => openFzForm(b, data)),
+    });
+  };
 }
 
 /* ---------- Gesten (V2, Kapitel 8.6) ---------- */
@@ -2041,6 +2279,14 @@ function codeSub(c) {
   return c.lastUsed ? `zuletzt genutzt ${relativeDay(c.lastUsed)}` : 'noch nie genutzt';
 }
 
+/** Zusatzrecht „Fahrzeuge buchen“ (Admins dürfen immer) */
+function bookSwitch(on) {
+  return `<label class="switch-row">
+    <span>Fahrzeuge buchen<small class="switch-sub">darf Fahrzeuge anfragen (Admins bestätigen)</small></span>
+    <span class="switch"><input type="checkbox" id="ncBook" role="switch" ${on ? 'checked' : ''}><span class="track"></span><span class="knob"></span></span>
+  </label>`;
+}
+
 function roleBadge(c) {
   if (c.blocked) return '<span class="rbadge off">Gesperrt</span>';
   if (c.role === 'admin') return '<span class="rbadge admin">Admin</span>';
@@ -2078,7 +2324,7 @@ function renderCodesPage() {
       <h2 class="group">Persönliche Codes</h2>
       ${personal.length ? `<div class="group-box">${personal.map(c => `
         <button class="opt code-row${c.blocked ? ' is-blocked' : ''}" type="button" data-code-id="${esc(c.id)}">
-          <span class="grow"><b>${esc(c.name)}</b><small>${esc(codeSub(c))}</small></span>
+          <span class="grow"><b>${esc(c.name)}</b><small>${esc(codeSub(c))}${c.book && c.role !== 'admin' && !c.blocked ? ' · Fahrzeuge buchen' : ''}</small></span>
           ${roleBadge(c)}
         </button>`).join('')}</div>` : '<p class="empty" style="padding:16px 0">Noch keine persönlichen Codes.</p>'}`;
   }
@@ -2126,6 +2372,7 @@ function openNewCodeSheet() {
       <label class="field">Für wen?<input id="ncName" maxlength="60" autocomplete="off" data-autofocus aria-describedby="ncHint">
         <span class="small-note" id="ncHint" style="font-weight:400">Erscheint bei „Letzte Änderung“ am Termin.</span></label>
       <fieldset class="group-set"><legend>Rolle</legend><div class="group-box">${roleOptions('write')}</div></fieldset>
+      ${bookSwitch(false)}
       <div class="note">${icon('info', 18)}<span>Danach bekommst du einen Anmelde-Link zum Teilen. Der Code wird nur einmal vollständig angezeigt.</span></div>
     </div>
     <div class="sheet-foot">
@@ -2138,7 +2385,7 @@ function openNewCodeSheet() {
     const name = $('#ncName').value.trim();
     const role = (sheetEl.querySelector('input[name="role"]:checked') || {}).value;
     if (!name) { $('#ncName').focus(); return toast('Bitte einen Namen eingeben.', true); }
-    mutate(e.currentTarget, 'createCode', { name, role }, d => showCreatedCode(d, name, role, false));
+    mutate(e.currentTarget, 'createCode', { name, role, book: $('#ncBook').checked }, d => showCreatedCode(d, name, role, false));
   };
 }
 
@@ -2214,6 +2461,7 @@ function openCodeSheet(c) {
       ${self ? `<div class="note">${icon('info', 18)}<span>Das ist dein eigener Code. Du kannst ihn weder sperren, herabstufen noch löschen.</span></div>` : ''}
       <label class="field">Name<input id="csName" value="${esc(c.name)}" maxlength="60" autocomplete="off"></label>
       ${c.blocked || team ? '' : `<fieldset class="group-set"><legend>Rolle</legend><div class="group-box">${roleOptions(c.role, self ? ['read', 'write'].filter(r => ROLE_RANK[r] < ROLE_RANK[c.role]) : [])}</div></fieldset>`}
+      ${team ? '' : bookSwitch(!!c.book)}
     </div>
     <div class="sheet-foot column">
       <button class="btn primary" type="button" id="csSave">Speichern</button>
@@ -2232,6 +2480,8 @@ function openCodeSheet(c) {
     if (!name) { $('#csName').focus(); return toast('Bitte einen Namen eingeben.', true); }
     if (name !== c.name) changes.name = name;
     if (roleEl && roleEl.value !== c.role) changes.role = roleEl.value;
+    const bookEl = $('#ncBook');
+    if (bookEl && bookEl.checked !== !!c.book) changes.book = bookEl.checked;
     if (Object.keys(changes).length === 1) return closeSheet();
     mutate(e.currentTarget, 'updateCode', changes, afterCodeChange);
   };
@@ -2347,7 +2597,7 @@ listEl.addEventListener('click', e => {
   if (card) openDetail(state.events[+card.dataset.i]);
 });
 $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
-$('#btnNew').onclick = () => openForm(null);
+$('#btnNew').onclick = () => (state.view === 'fz' ? openFzForm(null) : openForm(null));
 $('#btnReload').onclick = () => (state.view === 'fz' ? loadFz(true) : load(true));
 $('#btnMore').onclick = openMore;
 document.querySelectorAll('.seg [data-view]').forEach(b => (b.onclick = () => setView(b.dataset.view)));

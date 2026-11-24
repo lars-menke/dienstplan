@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '7.0 (Fahrzeuge anzeigen)',
+  VERSION: '7.1 (Fahrzeuge buchen)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -67,6 +67,7 @@ function doPost(e) {
   } catch (err) {
     if (err.isAuth) return json_({ ok: false, error: errMsg_(err), auth: true });
     if (err.isForbidden) return json_(Object.assign({ ok: false, error: MSG_FORBIDDEN, forbidden: true }, userInfo_(user)));
+    if (err.conflicts) return json_(Object.assign({ ok: false, error: errMsg_(err), conflict: true, conflicts: err.conflicts, canForce: !!err.canForce }, userInfo_(user)));
     Logger.log(`FEHLER App (${req.action}): ${errMsg_(err)}`);
     return json_(Object.assign({ ok: false, error: errMsg_(err) }, user ? userInfo_(user) : {}));
   }
@@ -74,7 +75,7 @@ function doPost(e) {
 
 /** Steht in jeder Antwort (V2, Kapitel 5.1). `user` bleibt für die Live-App erhalten. */
 function userInfo_(user) {
-  return { role: user.role, userName: user.name, user: user.name };
+  return { role: user.role, userName: user.name, user: user.name, canBook: user.role === 'admin' || !!user.book };
 }
 
 function handleAction_(action, data, user) {
@@ -116,7 +117,11 @@ function requiredRole_(action, data) {
   switch (action) {
     case 'getData':
     case 'getVehicles':
+    case 'saveBooking':   // dazu Berechtigung „Fahrzeuge buchen“ (Fahrzeuge.gs)
+    case 'cancelBooking':
       return 'read';
+    case 'decideBooking':
+      return 'admin';
     case 'saveEvent':
     case 'saveEvents':
     case 'setStatusBulk':
@@ -220,7 +225,7 @@ function authenticate_(code) {
   if (!entry || entry.blocked) return authFail_();
 
   touchLastUsed_(entry);
-  return { id: entry.id, name: entry.name, role: entry.team ? 'read' : normalizeRole_(entry.role) };
+  return { id: entry.id, name: entry.name, role: entry.team ? 'read' : normalizeRole_(entry.role), book: !entry.team && !!entry.book };
 }
 
 function authFail_() {
@@ -296,7 +301,7 @@ function newCodeId_() {
  * Legt einen Code an. Gibt { entry, code, link } zurück.
  * Der Code selbst wird nur hier einmal zurückgegeben und nirgends gespeichert.
  */
-function createCode_(name, role, team) {
+function createCode_(name, role, team, book) {
   const cleanName = (name || '').toString().trim();
   if (!cleanName) throw new Error('Bitte einen Namen eingeben.');
   if (cleanName.length > WEBAPP.MAX_NAME_LENGTH) throw new Error(`Der Name ist zu lang (höchstens ${WEBAPP.MAX_NAME_LENGTH} Zeichen).`);
@@ -319,6 +324,7 @@ function createCode_(name, role, team) {
       name: cleanName,
       role: team ? 'read' : role,
       team: !!team,
+      book: !team && !!book,
       hash,
       hint: codeHint_(code),
       blocked: false,
@@ -753,6 +759,7 @@ function listCodes_(user, extra) {
       name: c.name,
       role: c.team ? 'read' : normalizeRole_(c.role),
       team: !!c.team,
+      book: !c.team && !!c.book,
       hint: prettyHint_(c.hint),
       blocked: c.blocked || false,
       created: c.created || null,
@@ -764,7 +771,7 @@ function listCodes_(user, extra) {
 
 /** { name, role } → { code, link } nur in dieser Antwort */
 function createCodeApi_(data, user) {
-  const r = createCode_(data.name, data.role, false);
+  const r = createCode_(data.name, data.role, false, !!data.book);
   return listCodes_(user, {
     message: `Zugangscode für „${r.entry.name}“ erstellt.`,
     code: formatCode_(r.code),
@@ -797,6 +804,10 @@ function updateCode_(data, user) {
       if (!ROLES[data.role]) throw new Error('Unbekannte Rolle.');
       if (entry.team && data.role !== 'read') throw new Error('Der Mannschafts-Code hat immer die Rolle „Lesen“.');
       changes.role = data.role;
+    }
+    if (data.book !== undefined) {
+      if (entry.team) throw new Error('Mit dem Mannschafts-Code kann man keine Fahrzeuge buchen.');
+      changes.book = !!data.book;
     }
     if (data.blocked !== undefined) {
       if (entry.team) throw new Error('Der Mannschafts-Code wird nicht gesperrt, sondern neu erzeugt.');

@@ -880,15 +880,23 @@ function renderFz() {
   const mine = upcoming.filter(fzMine);
   if (state.fzFilter === '@open' && !pending.length) state.fzFilter = '';
 
+  const f0 = state.fzFilter;
+  const showOpen = isAdmin() && pending.length > 0;
+  const showMine = state.canBook && !isAdmin() && mine.length > 0;
   let html = `<div class="seg fz-mode" role="group" aria-label="Darstellung">
     <button type="button" data-fzm="list" aria-pressed="${state.fzMode !== 'plan'}">Liste</button>
     <button type="button" data-fzm="plan" aria-pressed="${state.fzMode === 'plan'}">Belegungsplan</button>
   </div>
   <div class="fz-filter" role="group" aria-label="Filter">
-    <button type="button" data-fzf="" aria-pressed="${!state.fzFilter}">Alle</button>
-    ${isAdmin() && pending.length ? `<button type="button" data-fzf="@open" class="open" aria-pressed="${state.fzFilter === '@open'}">Offen · ${pending.length}</button>` : ''}
-    ${state.canBook && !isAdmin() && mine.length ? `<button type="button" data-fzf="@mine" aria-pressed="${state.fzFilter === '@mine'}">Meine · ${mine.length}</button>` : ''}
-    ${fz.vehicles.map(v => `<button type="button" data-fzf="${esc(v)}" aria-pressed="${state.fzFilter === v}"${count(v) ? '' : ' class="none"'}>${esc(v)}</button>`).join('')}
+    ${showOpen || showMine ? `<button type="button" data-fzf="" aria-pressed="${!state.fzFilter}">Alle</button>` : ''}
+    ${showOpen ? `<button type="button" data-fzf="@open" class="open" aria-pressed="${state.fzFilter === '@open'}">Offen · ${pending.length}</button>` : ''}
+    ${showMine ? `<button type="button" data-fzf="@mine" aria-pressed="${state.fzFilter === '@mine'}">Meine · ${mine.length}</button>` : ''}
+    <label class="fz-select${f0 && !f0.startsWith('@') ? ' on' : ''}">${icon('truck', 16)}
+      <select id="fzVehicle" aria-label="Fahrzeug wählen">
+        <option value="">Alle Fahrzeuge</option>
+        ${fz.vehicles.map(v => `<option value="${esc(v)}"${state.fzFilter === v ? ' selected' : ''}>${esc(v)}${count(v) ? ` · ${count(v)}` : ' · frei'}</option>`).join('')}
+      </select>${icon('chevronDown', 14, 2.5)}
+    </label>
   </div>`;
 
   if (isAdmin() && pending.length && state.fzFilter !== '@open') {
@@ -957,6 +965,8 @@ function fzFinish(html) {
     state.fzFilter = btn.dataset.fzf;
     renderFz();
   }));
+  const vs = $('#fzVehicle');
+  if (vs) vs.onchange = () => { state.fzFilter = vs.value; renderFz(); };
   listEl.querySelectorAll('[data-fzm]').forEach(btn => (btn.onclick = () => {
     state.fzMode = btn.dataset.fzm;
     store.set(KEY_FZ_MODE, state.fzMode);

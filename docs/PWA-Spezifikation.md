@@ -725,3 +725,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 24.11.2026 | Fahrzeuge: Titel ohne Namen, „Reserviert durch“ in der Beschreibung; keine Doppelbuchungen mehr (auch nicht für Admins), Bestand mit Überschneidung wird markiert (Schnittstelle 7.2, Cache `dienstplan-v18`) |
 | 24.11.2026 | Fahrzeuge: Beschreibung im Kalender nur noch „Reserviert durch“ und Stand der Bestätigung (Schnittstelle 7.3) |
 | 24.11.2026 | V4 Etappe 3: alte Fahrzeug-Einträge vereinheitlichen (Vorschau, Backup-Blatt), Belegungsplan je Fahrzeug und Woche (Schnittstelle 7.4, Cache `dienstplan-v19`) |
+| 24.11.2026 | Optik: Piktogramme im Ansicht-Umschalter (ab 375 px), Fahrzeug-Filter als Auswahlfeld statt Chip-Leiste, Fahrzeugwahl im Formular als 4er-Raster (Cache `dienstplan-v21`) |

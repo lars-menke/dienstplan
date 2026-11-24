@@ -133,7 +133,9 @@ Einmalig (Admin, in der App): **Vorschau** aller erkannten Einträge „alter Ti
    - Serien: Bestätigen, Ablehnen, Löschen gelten für die ganze Serie; Ändern einer Serie nur im Google Kalender.
    - Admins können auch Einträge aus Google bearbeiten; sie werden dabei ins App-Format übernommen (bestätigt).
    - Farben im Google Kalender: angefragt = Banane, abgelehnt = Graphit (und „frei“), bestätigt = Standardfarbe.
-3. **Altbestand vereinheitlichen** (Abschnitt 9) und Zeitleiste.
+3. **Altbestand vereinheitlichen** (Abschnitt 9) und Zeitleiste. – umgesetzt (Schnittstelle 7.4):
+   - Admin-Leiste „n Einträge im alten Format“ → Vorschau „alt (durchgestrichen) → neu“ mit Auswahl, Übernehmen in Paketen zu 100; Einträge ab 30 Tagen zurück, Serien als Ganzes; Sicherung im Blatt „Fahrzeuge-Backup“ (Datum, alter Titel, alte Beschreibung). Danach gelten die Einträge als bestätigte App-Buchungen; „Reserviert durch“ steht in der Beschreibung.
+   - Belegungsplan: Umschalter „Liste | Belegungsplan“ (wird gemerkt); Zeilen = Fahrzeuge, Spalten = Mo–So, Wochen blättern, Fahrzeug-/Offen-/Meine-Filter wirken mit; angefragt = gelb gestrichelt; Antippen öffnet die Details. Auf dem Handy waagerecht scrollbar, heutige Spalte markiert.
 4. **Nur noch App:** Schreibrechte der anderen Konten im Kalender entziehen (von Hand in Google), Hinweis in der Kalenderbeschreibung.
 
 ## 11. Offen

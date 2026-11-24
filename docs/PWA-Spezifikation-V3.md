@@ -180,6 +180,7 @@ Funktion **`migrateToCalendarV3()`** im Apps-Script-Editor, mit Probelauf `migra
 - GitHub Action `.github/workflows/apps-script.yml`: Bei Push auf `main` mit Änderungen unter `apps-script/` → `clasp push` und `clasp deploy --deploymentId <bestehende ID>`. Die `/exec`-Adresse bleibt gleich.
 - Secrets in GitHub: `CLASPRC_JSON` (Inhalt von `~/.clasprc.json` nach einmaligem `clasp login` auf Lars' Rechner) und `DEPLOYMENT_ID`. **Nicht ins Repo.**
 - Bis das eingerichtet ist, bleibt der Weg wie bisher: Code im Editor einfügen → Bereitstellungen verwalten → neue Version.
+- *Umsetzung (Etappe 6):* `apps-script/appsscript.json` (Europe/Berlin, V8, Calendar v3, Web-App „Ausführen als: Ich“ / „Zugriff: Jeder“ = `USER_DEPLOYING` / `ANYONE_ANONYMOUS`), `.claspignore` (nur `*.gs` und Manifest), `.clasp.json.example`; `.clasp.json` und `.clasprc.json` stehen in `.gitignore`. Die Skript-ID liegt nicht im Repo, sondern als Secret `SCRIPT_ID`; der Workflow schreibt `.clasp.json` nur für den Lauf. `DEPLOYMENT_ID` ist optional – fehlt es, nimmt der Workflow die ID aus der `/exec`-Adresse in `config.js` (sie ist ohnehin öffentlich). clasp ist auf 3.4.1 festgelegt (dieselbe Version für `clasp login`). Nach dem Bereitstellen ruft der Workflow die `/exec`-Adresse auf und zeigt die Version. Auch von Hand startbar (Actions → „Apps Script bereitstellen“ → Run workflow).
 
 ---
 
@@ -192,7 +193,7 @@ Funktion **`migrateToCalendarV3()`** im Apps-Script-Editor, mit Probelauf `migra
 | 3 | Aufräumen: alten Sheet-Weg, 15-Min-Sync, Marker-Logik und `LastSyncHash` entfernen; Schalter `DATENQUELLE` entfällt | schlanker Code (umgesetzt in 6.0, siehe 9.1) |
 | 4 | Tabellenansicht (7.2) | Bearbeiten in der Liste |
 | 5 | Import (7.3) | Excel/CSV/ICS direkt in den Kalender (umgesetzt) |
-| 6 | clasp + GitHub Action (Kap. 8), optional | Backend-Code wird automatisch bereitgestellt |
+| 6 | clasp + GitHub Action (Kap. 8), optional | Backend-Code wird automatisch bereitgestellt (umgesetzt) |
 
 ### 9.1 Etappe 3 – umgesetzt (Schnittstelle 6.0)
 - Entfernt: Sheet-Weg der Schnittstelle, 15-Minuten-Sync, Import/Cleanup/Hard Delete, „Sheet einrichten“, Kategorien-Vorschläge, Marker „#Dienstplan 2026“ (alte Marker werden beim Ableiten fremder Termine weiter herausgefiltert), `LastSyncHash`, Schalter `DATENQUELLE` mit `setDataSource…()`, Umstellung `migrateToCalendarV3()`.

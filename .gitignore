@@ -1,0 +1,4 @@
+
+# clasp: Projektdatei mit Skript-ID und Zugangsdaten nie einchecken
+.clasp.json
+.clasprc.json

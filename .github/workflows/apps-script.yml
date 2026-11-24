@@ -1,0 +1,100 @@
+# Apps-Script-Backend automatisch bereitstellen (docs/PWA-Spezifikation-V3.md, Kapitel 8)
+#
+# Bei jedem Push auf main mit Änderungen unter apps-script/:
+#   1. clasp push --force   → Code und Manifest ins bestehende Apps-Script-Projekt
+#   2. clasp deploy -i …    → neue Version + bestehende Web-App-Bereitstellung aktualisieren
+#                             (die /exec-Adresse bleibt gleich)
+#
+# Benötigte Secrets (GitHub → Settings → Secrets and variables → Actions):
+#   CLASPRC_JSON   Inhalt von ~/.clasprc.json nach „clasp login“ (Zugang – nie ins Repo!)
+#   SCRIPT_ID      Skript-ID (Apps-Script-Editor → Projekteinstellungen → IDs)
+#   DEPLOYMENT_ID  optional; fehlt es, wird die ID aus der /exec-Adresse in config.js genommen
+
+name: Apps Script bereitstellen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps-script/**'
+      - '.claspignore'
+      - '.github/workflows/apps-script.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLASP_VERSION: 3.4.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Secrets prüfen
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          missing=0
+          for v in CLASPRC_JSON SCRIPT_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Secret $v fehlt (Settings → Secrets and variables → Actions → New repository secret)."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: clasp installieren
+        run: npm install --global "@google/clasp@${CLASP_VERSION}"
+
+      - name: Zugang und Projekt einrichten (nur für diesen Lauf)
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          umask 077
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          node -e 'JSON.parse(require("fs").readFileSync(process.env.HOME + "/.clasprc.json", "utf8"))' \
+            || { echo "::error::CLASPRC_JSON ist kein gültiges JSON – bitte den kompletten Inhalt von .clasprc.json einfügen."; exit 1; }
+          printf '{"scriptId":"%s","rootDir":"apps-script"}\n' "$SCRIPT_ID" > .clasp.json
+
+      - name: Diese Dateien werden hochgeladen
+        run: clasp status
+
+      - name: Code hochladen (clasp push)
+        run: clasp push --force
+
+      - name: Bestehende Bereitstellung aktualisieren (clasp deploy)
+        env:
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          id="$DEPLOYMENT_ID"
+          if [ -z "$id" ]; then
+            id=$(grep -o 'https://script.google.com/macros/s/[A-Za-z0-9_-]*/exec' config.js | head -1 | sed -E 's#.*/s/([^/]+)/exec#\1#')
+            echo "DEPLOYMENT_ID nicht gesetzt – nehme die ID aus config.js."
+          fi
+          if [ -z "$id" ]; then echo "::error::Keine Bereitstellungs-ID gefunden."; exit 1; fi
+          clasp deploy --deploymentId "$id" --description "GitHub ${GITHUB_SHA::7} (Lauf ${GITHUB_RUN_NUMBER})"
+
+      - name: Bereitgestellte Version prüfen
+        run: |
+          url=$(grep -o 'https://script.google.com/macros/s/[A-Za-z0-9_-]*/exec' config.js | head -1)
+          sleep 5
+          echo "GET $url"
+          curl --silent --show-error --location --max-time 60 "$url"
+          echo
+
+      - name: Zugangsdaten entfernen
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" .clasp.json

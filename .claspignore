@@ -1,0 +1,4 @@
+# Nur Script-Dateien und Manifest hochladen (Pfade relativ zu rootDir = apps-script/)
+**/**
+!*.gs
+!appsscript.json

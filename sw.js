@@ -1,7 +1,7 @@
 // Service Worker: hält die App-Dateien vor, damit sie schnell startet
 // und auch ohne Netz öffnet. Termine kommen immer frisch vom Server.
 // Bei jeder Änderung an den App-Dateien die Versionsnummer erhöhen.
-const CACHE = 'dienstplan-v21';
+const CACHE = 'dienstplan-v22';
 const FILES = [
   './',
   'index.html',
@@ -23,7 +23,10 @@ const FILES = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' – am Browser-Zwischenspeicher vorbei, sonst landen evtl. noch alte Dateien im neuen Cache
+  event.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 // Alte Caches entfernen – auch die der früheren Testversion (dienstplan-beta-*)
@@ -36,13 +39,15 @@ self.addEventListener('activate', event => {
 });
 
 // Erst das Netz fragen (immer aktuell), bei Funkloch aus dem Speicher.
+// cache: 'no-cache' – GitHub Pages erlaubt 10 Minuten Zwischenspeichern; so fragt der Browser
+// jedes Mal kurz nach (unverändert = kleine 304-Antwort) und neue Versionen sind sofort da.
 // Anfragen an die Schnittstelle (andere Domain) laufen unverändert durch.
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
 
   event.respondWith(
-    fetch(req)
+    fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }))
       .then(res => {
         if (res.ok) {
           const copy = res.clone();

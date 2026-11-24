@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '7.1 (Fahrzeuge buchen)',
+  VERSION: '7.2 (keine Doppelbuchungen)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -67,7 +67,7 @@ function doPost(e) {
   } catch (err) {
     if (err.isAuth) return json_({ ok: false, error: errMsg_(err), auth: true });
     if (err.isForbidden) return json_(Object.assign({ ok: false, error: MSG_FORBIDDEN, forbidden: true }, userInfo_(user)));
-    if (err.conflicts) return json_(Object.assign({ ok: false, error: errMsg_(err), conflict: true, conflicts: err.conflicts, canForce: !!err.canForce }, userInfo_(user)));
+    if (err.conflicts) return json_(Object.assign({ ok: false, error: errMsg_(err), conflict: true, conflicts: err.conflicts }, userInfo_(user)));
     Logger.log(`FEHLER App (${req.action}): ${errMsg_(err)}`);
     return json_(Object.assign({ ok: false, error: errMsg_(err) }, user ? userInfo_(user) : {}));
   }

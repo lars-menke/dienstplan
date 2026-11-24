@@ -60,8 +60,9 @@ Die Liste liegt im Backend (`FAHRZEUGE`), Änderungen nur per Code-Änderung (se
 
 - Von der App geschrieben: `extendedProperties.private` = `{ fz: '1', vehicles: 'MTW,GW-P', purpose, contact, state, requestedBy, decidedBy, decidedAt, reason }`.
 - **Titel** wird daraus erzeugt, damit der Kalender lesbar bleibt:
-  - bestätigt: `MTW + GW-P · Lehrgang FTZ · ASP: Name`
-  - angefragt: `Angefragt: MTW + GW-P · Lehrgang FTZ · ASP: Name`
+  - bestätigt: `MTW + GW-P · Lehrgang FTZ`
+  - angefragt: `Angefragt: MTW + GW-P · Lehrgang FTZ`
+  - Beschreibung: erste Zeile `Reserviert durch: Name`, darunter wer wann angefragt/bestätigt hat
   - abgelehnt: `Abgelehnt: …`, Termin auf „frei“ (`transparency: transparent`)
 - **Ohne** `fz`-Kennung (direkt in Google eingetragen) liest der **Titel-Parser** die Fahrzeuge vom Titelanfang (Schreibweisen aus Abschnitt 3, Trenner `&`, `/`, `+`, `,`, `und`), `ASP: …` als Ansprechpartner, den Rest als Zweck; Zustand = bestätigt. Nicht erkannte Einträge → **„nicht zugeordnet“**.
 - Keine Gäste, `sendUpdates: none` (wie Dienstplan).
@@ -80,9 +81,10 @@ Die Liste liegt im Backend (`FAHRZEUGE`), Änderungen nur per Code-Änderung (se
 
 ## 6. Regeln
 
-- **Pflichtfelder:** Datum, Zeit (Beginn/Ende oder ganztägig), mindestens ein Fahrzeug, Zweck, ASP.
+- **Pflichtfelder:** Datum, Zeit (Beginn/Ende oder ganztägig), mindestens ein Fahrzeug, Zweck, „Reserviert durch“ (Feld `contact`; in alten Google-Titeln als „ASP …“).
 - **Konfliktprüfung im Backend** unter Sperre: ein Fahrzeug darf sich zeitlich nicht mit einer **bestätigten oder angefragten** Buchung überschneiden (abgelehnte zählen nicht; Ende = Beginn ist keine Überschneidung). Bei Serien wird jedes Vorkommen im nächsten Jahr geprüft.
-- Konflikt → Speichern abgelehnt mit Hinweis „MTW ist am 12.12. 18:00–23:00 belegt: Lehrgang FTZ (ASP …)“. Admins dürfen nach Rückfrage trotzdem speichern.
+- Konflikt → Speichern abgelehnt mit Hinweis „MTW ist am 12.12. 18:00–23:00 belegt: Lehrgang FTZ (reserviert durch …)“. **Doppelbuchungen sind nie möglich, auch nicht für Admins** – jedes Fahrzeug gibt es nur einmal. Wer Vorrang hat, ändert oder löscht zuerst die andere Buchung.
+- Bereits doppelt belegte Einträge (direkt in Google eingetragen) zeigt die App mit „Doppelt belegt“ an.
 - Bestätigen prüft erneut (Google-Einträge können inzwischen dazugekommen sein).
 - Ablehnen mit optionalem Grund; abgelehnte Buchungen bleiben bis zu ihrem Datum sichtbar (für die anfragende Person), danach entfernt das nächtliche Aufräumen sie.
 

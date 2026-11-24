@@ -1039,7 +1039,7 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 
 /* Altbestand vereinheitlichen */
 .norm-all { display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 600; }
-.norm-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.norm-list { flex: none; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .norm-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .norm-row:last-child { border-bottom: 0; }
 .norm-row input, .norm-all input { width: 20px; height: 20px; flex: none; margin-top: 2px; accent-color: var(--accent); }

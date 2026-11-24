@@ -1048,3 +1048,29 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .norm-row s { font-size: 13px; color: var(--muted); }
 .norm-row b { font-size: 15px; }
 .norm-row em { font-style: normal; font-size: 13px; color: var(--text-2); }
+
+/* Ansicht-Umschalter mit Piktogrammen */
+.seg button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 4px; min-width: 0; }
+.seg button .ic { flex: none; opacity: .75; }
+.seg button[aria-pressed="true"] .ic { opacity: 1; }
+@media (max-width: 374px) { .tools .seg button .ic { display: none; } }
+
+/* Fahrzeug-Filter als Auswahl */
+.fz-select {
+  position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 12px;
+  border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text);
+  font-size: 14px; font-weight: 600;
+}
+.fz-select select {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: inherit;
+  font: inherit; padding: 0 2px; outline: 0; max-width: 46vw;
+}
+.fz-select:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.fz-select.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.fz-select.on select option { color: var(--text); background: var(--surface); }
+
+/* Formular: Fahrzeuge als kompaktes Raster */
+.fz-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.fz-pick .chip { height: 38px; padding: 0 4px; justify-content: center; gap: 4px; font-size: 14px; }
+.fz-pick .chip[aria-pressed="true"] { padding: 0 3px; background: var(--text); color: var(--bg); border-color: var(--text); }
+@media (min-width: 600px) { .fz-pick { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

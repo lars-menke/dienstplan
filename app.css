@@ -964,3 +964,33 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .card.is-draft .tile { background: var(--draft-bg); color: var(--draft); }
 .tbl tr.is-draft td:first-child { box-shadow: inset 4px 0 0 var(--draft-line); }
 .tbl tr.is-draft td { border-bottom-style: dashed; border-bottom-color: var(--draft-line); }
+
+/* ---------- Fahrzeuge (docs/Fahrzeugbuchung-Spezifikation.md) ---------- */
+
+.fz-filter {
+  display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; margin: 0 -16px; padding-inline: 16px;
+  scrollbar-width: none;
+}
+.fz-filter::-webkit-scrollbar { display: none; }
+.fz-filter button {
+  flex: none; height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--text);
+  font-size: 14px; font-weight: 600;
+}
+.fz-filter button.none { color: var(--muted); font-weight: 500; }
+.fz-filter button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.vchips { display: flex; gap: 4px; flex-wrap: wrap; }
+.vchip {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 6px;
+  background: var(--text); color: var(--bg); font-size: 12px; font-weight: 700; letter-spacing: .02em;
+}
+.sheet-head .vchips { margin-bottom: 6px; }
+.fz-unassigned { display: flex; flex-direction: column; gap: 4px; }
+.fz-un {
+  text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--line-strong);
+  background: var(--surface); color: var(--text-2); font-size: 14px; overflow-wrap: anywhere;
+}
+.fz-range { padding: 10px 0 0; }
+@media (min-width: 600px) {
+  .fz-filter { flex-wrap: wrap; margin: 0; padding-inline: 0; overflow: visible; }
+}

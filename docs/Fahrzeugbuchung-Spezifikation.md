@@ -34,10 +34,11 @@ Die App bekommt einen zweiten Bereich **„Fahrzeuge“**: Belegung der Fahrzeug
 | MTW | MTW |
 | ELW | ELW |
 | KdoW | KdoW, KDOW, KDW |
-| GW-P | GW-P, GWP, GW P |
+| GW-P | GW-P, GWP, GW P, **Pritsche** |
 | GW-L | GW-L, GWL, GW L |
+| JF-Bus | JF-Bus, JF Bus |
 
-**Weitere** (nur Anzeige, nicht buchbar): Pritsche, Anhänger, Bootanhänger, JF-Bus („JF Bus“, „Bus“).
+**Ignoriert** (vorerst): Anhänger, Bootanhänger – werden im Titel erkannt und übergangen; Einträge nur mit Anhänger erscheinen nicht. „JF“ allein (ohne „Bus“) ist kein Fahrzeug, sondern Teil des Zwecks (Jugendfeuerwehr).
 
 Die Liste liegt im Backend (`FAHRZEUGE`), Änderungen nur per Code-Änderung (selten).
 
@@ -48,7 +49,6 @@ Die Liste liegt im Backend (`FAHRZEUGE`), Änderungen nur per Code-Änderung (se
 ```
 { id, start, end, allDay,          // wie Dienstplan-Termin
   vehicles: ['MTW','GW-P'],        // buchbare Kürzel
-  others:   ['Pritsche'],          // „Weitere“
   purpose:  'Lehrgang FTZ',        // Zweck
   contact:  'Name',                // Ansprechpartner (ASP)
   state:    'requested' | 'confirmed' | 'rejected',
@@ -109,7 +109,7 @@ Für Buchende: eigene Anfragen mit Zustand, Zurückziehen solange angefragt.
 
 | Aktion | Rolle | Inhalt |
 |---|---|---|
-| `getVehicles` | alle | `{ from, to }` → `{ vehicles, others, bookings, pending? }` |
+| `getVehicles` | alle | `{ from, to }` → `{ vehicles, bookings, unassigned? }` |
 | `saveBooking` | buchen | `{ id?, start, end, allDay, vehicles, purpose, contact, recurrence?, force? }` |
 | `decideBooking` | admin | `{ id, decision: 'confirm'|'reject', reason? }` |
 | `cancelBooking` | buchen (eigene, angefragt) / admin | `{ id }` |
@@ -118,11 +118,11 @@ Für Buchende: eigene Anfragen mit Zustand, Zurückziehen solange angefragt.
 
 ## 9. Altbestand vereinheitlichen
 
-Einmalig (Admin, in der App): **Vorschau** aller erkannten Einträge „alter Titel → neuer Titel“ mit Fahrzeugen, Zweck, ASP; Admin korrigiert oder schließt einzelne aus; **Übernehmen** schreibt Titel und `fz`-Kennung. Serien werden als Ganzes geändert. Vorher wird alles ins Backup-Sheet geschrieben. Einträge mit nur „Weitere“-Fahrzeugen bleiben unverändert.
+Einmalig (Admin, in der App): **Vorschau** aller erkannten Einträge „alter Titel → neuer Titel“ mit Fahrzeugen, Zweck, ASP; Admin korrigiert oder schließt einzelne aus; **Übernehmen** schreibt Titel und `fz`-Kennung. Serien werden als Ganzes geändert. Vorher wird alles ins Backup-Sheet geschrieben. Einträge nur mit Anhänger bleiben unverändert. „Pritsche“ wird dabei zu „GW-P“.
 
 ## 10. Etappen
 
-1. **Anzeigen:** Bereich „Fahrzeuge“, Belegung + Filter, Parser, „nicht zugeordnet“. Nur lesend.
+1. **Anzeigen:** Bereich „Fahrzeuge“, Belegung + Filter, Parser, „nicht zugeordnet“. Nur lesend. – umgesetzt als vierte Ansicht „Fahrzeuge“ neben Liste/Woche/Tabelle (Schnittstelle 7.0).
 2. **Anfragen & Bestätigen:** Berechtigung „Fahrzeuge buchen“, Formular, Konfliktprüfung, offene Anfragen, meine Anfragen.
 3. **Altbestand vereinheitlichen** (Abschnitt 9) und Zeitleiste.
 4. **Nur noch App:** Schreibrechte der anderen Konten im Kalender entziehen (von Hand in Google), Hinweis in der Kalenderbeschreibung.

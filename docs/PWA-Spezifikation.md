@@ -688,10 +688,12 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | `apps-script/Dienstplan-Sync.gs` | Konfiguration, Sheet-Menü, Hilfsfunktionen (Titel/Beschreibung bauen, Datum) |
 | `apps-script/Kalender.gs` | Termine und Kategorien im Google Kalender, Backup, Wiederherstellen |
 | `apps-script/WebApp.gs` | Schnittstelle, Rollen, Zugangscodes |
+| `apps-script/Fahrzeuge.gs` | Fahrzeugbuchung: Kalender „Fahrzeuge 18-2“ lesen, Fahrzeuge im Titel erkennen (`docs/Fahrzeugbuchung-Spezifikation.md`) |
 | `apps-script/appsscript.json` | Manifest (Zeitzone, Calendar v3, Web-App-Einstellungen) |
 | `.claspignore`, `.clasp.json.example` | clasp-Einstellungen; `.clasp.json` selbst steht nicht im Repo |
 | `.github/workflows/apps-script.yml` | stellt das Backend bei Änderungen automatisch bereit |
 | `docs/PWA-Spezifikation.md` | dieses Dokument |
+| `docs/Fahrzeugbuchung-Spezifikation.md` | Fahrzeugbuchung (V4): Ziele, Regeln, Etappen |
 | `docs/PWA-Spezifikation-V3.md` | Herleitung V3, Umstellung, Etappen, Notfall-Rückweg |
 | `docs/design/` | Design-Artboards (Referenz) |
 
@@ -718,3 +720,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 19.11.2026 | Entwürfe: Import (Standard) und Formular legen Termine im privaten Entwurfs-Kalender an, „Freigeben“ macht sie sichtbar (Schnittstelle 6.2, Cache `dienstplan-v14`) |
 | 20.11.2026 | Schneller: mehrere Termine parallel (Import, Freigeben, Mehrfach-Absagen/-Löschen), `deleteEvents`; frisch Importiertes sofort sichtbar; Tabelle behält Scrollposition; Entwürfe deutlicher gestrichelt (Schnittstelle 6.3, Cache `dienstplan-v15`) |
 | 23.11.2026 | V3 Etappe 6: Backend als clasp-Projekt, GitHub Action stellt bei Änderungen automatisch bereit (Schnittstelle 6.4) |
+| 24.11.2026 | V4 Etappe 1: Ansicht „Fahrzeuge“ – Belegung aus dem Kalender „Fahrzeuge 18-2“, Filter je Fahrzeug, Erkennung der Fahrzeuge im Titel, nicht zugeordnete Einträge für Admins (Schnittstelle 7.0, Cache `dienstplan-v16`) |

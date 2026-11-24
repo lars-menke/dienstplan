@@ -721,3 +721,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 20.11.2026 | Schneller: mehrere Termine parallel (Import, Freigeben, Mehrfach-Absagen/-Löschen), `deleteEvents`; frisch Importiertes sofort sichtbar; Tabelle behält Scrollposition; Entwürfe deutlicher gestrichelt (Schnittstelle 6.3, Cache `dienstplan-v15`) |
 | 23.11.2026 | V3 Etappe 6: Backend als clasp-Projekt, GitHub Action stellt bei Änderungen automatisch bereit (Schnittstelle 6.4) |
 | 24.11.2026 | V4 Etappe 1: Ansicht „Fahrzeuge“ – Belegung aus dem Kalender „Fahrzeuge 18-2“, Filter je Fahrzeug, Erkennung der Fahrzeuge im Titel, nicht zugeordnete Einträge für Admins (Schnittstelle 7.0, Cache `dienstplan-v16`) |
+| 24.11.2026 | V4 Etappe 2: Fahrzeuge anfragen, bestätigen, ablehnen, zurückziehen; Konfliktprüfung im Backend; Berechtigung „Fahrzeuge buchen“ je Code (Schnittstelle 7.1, Cache `dienstplan-v17`) |

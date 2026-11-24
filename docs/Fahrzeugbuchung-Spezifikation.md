@@ -123,7 +123,14 @@ Einmalig (Admin, in der App): **Vorschau** aller erkannten Einträge „alter Ti
 ## 10. Etappen
 
 1. **Anzeigen:** Bereich „Fahrzeuge“, Belegung + Filter, Parser, „nicht zugeordnet“. Nur lesend. – umgesetzt als vierte Ansicht „Fahrzeuge“ neben Liste/Woche/Tabelle (Schnittstelle 7.0).
-2. **Anfragen & Bestätigen:** Berechtigung „Fahrzeuge buchen“, Formular, Konfliktprüfung, offene Anfragen, meine Anfragen.
+2. **Anfragen & Bestätigen:** Berechtigung „Fahrzeuge buchen“, Formular, Konfliktprüfung, offene Anfragen, meine Anfragen. – umgesetzt (Schnittstelle 7.1):
+   - Code-Verwaltung: Schalter „Fahrzeuge buchen“ je persönlichem Code (nicht für den Mannschafts-Code).
+   - Formular „Fahrzeug anfragen“ (Admins: „Fahrzeug buchen“): Fahrzeug-Chips mit Punkt für „im Zeitraum belegt“ und Hinweistext, Wiederholung vereinfacht (jede Woche / alle 2 Wochen / jeden Tag, immer mit Enddatum).
+   - Filter „Offen · n“ und Hinweisleiste für Admins, „Meine · n“ für Buchende.
+   - Details: Bestätigen / Ablehnen (mit Grund) / Bearbeiten / Löschen bzw. Anfrage zurückziehen.
+   - Serien: Bestätigen, Ablehnen, Löschen gelten für die ganze Serie; Ändern einer Serie nur im Google Kalender.
+   - Admins können auch Einträge aus Google bearbeiten; sie werden dabei ins App-Format übernommen (bestätigt).
+   - Farben im Google Kalender: angefragt = Banane, abgelehnt = Graphit (und „frei“), bestätigt = Standardfarbe.
 3. **Altbestand vereinheitlichen** (Abschnitt 9) und Zeitleiste.
 4. **Nur noch App:** Schreibrechte der anderen Konten im Kalender entziehen (von Hand in Google), Hinweis in der Kalenderbeschreibung.
 

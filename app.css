@@ -994,3 +994,10 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 @media (min-width: 600px) {
   .fz-filter { flex-wrap: wrap; margin: 0; padding-inline: 0; overflow: visible; }
 }
+.fz-filter button.open:not([aria-pressed="true"]) { border-color: var(--draft-line); color: var(--draft); background: var(--draft-bg); }
+.fz-pick .chip { position: relative; font-weight: 600; }
+.fz-pick .busy-dot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-solid); margin-left: 6px; }
+.fz-pick .chip.busy .busy-dot { display: inline-block; }
+.fz-clash { display: inline-flex; gap: 6px; align-items: flex-start; color: var(--warn); font-weight: 600; }
+.fz-clash .ic { flex: none; margin-top: 2px; }
+.tile-btn.ok { border-color: var(--ok); background: var(--ok-bg); color: var(--ok-ink); }

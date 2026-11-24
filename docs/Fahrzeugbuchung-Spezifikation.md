@@ -62,7 +62,7 @@ Die Liste liegt im Backend (`FAHRZEUGE`), Änderungen nur per Code-Änderung (se
 - **Titel** wird daraus erzeugt, damit der Kalender lesbar bleibt:
   - bestätigt: `MTW + GW-P · Lehrgang FTZ`
   - angefragt: `Angefragt: MTW + GW-P · Lehrgang FTZ`
-  - Beschreibung: erste Zeile `Reserviert durch: Name`, darunter wer wann angefragt/bestätigt hat
+  - Beschreibung: `Reserviert durch: Name`, darunter nur der Stand: `Bestätigt von … am TT.MM.JJJJ` · `Noch nicht bestätigt` · `Abgelehnt von … am …: Grund`
   - abgelehnt: `Abgelehnt: …`, Termin auf „frei“ (`transparency: transparent`)
 - **Ohne** `fz`-Kennung (direkt in Google eingetragen) liest der **Titel-Parser** die Fahrzeuge vom Titelanfang (Schreibweisen aus Abschnitt 3, Trenner `&`, `/`, `+`, `,`, `und`), `ASP: …` als Ansprechpartner, den Rest als Zweck; Zustand = bestätigt. Nicht erkannte Einträge → **„nicht zugeordnet“**.
 - Keine Gäste, `sendUpdates: none` (wie Dienstplan).

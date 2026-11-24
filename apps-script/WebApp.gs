@@ -21,7 +21,7 @@
 const WEBAPP = {
   // Stand der Schnittstelle – erscheint beim Aufruf der /exec-Adresse im Browser.
   // So lässt sich prüfen, ob die neue Version wirklich bereitgestellt ist.
-  VERSION: '7.3 (Beschreibung aufgeräumt)',
+  VERSION: '7.4 (Altbestand, Belegungsplan)',
 
   // Adresse der App auf GitHub Pages (für die Anmelde-Links)
   APP_URL: 'https://lars-menke.github.io/dienstplan/',
@@ -121,6 +121,7 @@ function requiredRole_(action, data) {
     case 'cancelBooking':
       return 'read';
     case 'decideBooking':
+    case 'normalizeTitles':
       return 'admin';
     case 'saveEvent':
     case 'saveEvents':

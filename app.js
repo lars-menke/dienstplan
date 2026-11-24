@@ -10,6 +10,7 @@ const KEY_DATA = 'dienstplan.data';
 const KEY_THEME = 'dienstplan.theme';
 const KEY_VIEW = 'dienstplan.view';
 const KEY_FZ = 'dienstplan.fz';
+const KEY_FZ_MODE = 'dienstplan.fzMode';
 const KEY_SWIPE_HINT = 'dienstplan.swipeHintSeen';
 
 // Vorlagen für „Neuer Termin“ (V2 8.5) – aus config.js, sonst diese Vorgabe
@@ -34,7 +35,7 @@ const state = {
   codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
   view: 'list', weekStart: null, selDay: null, // Wochenansicht (Etappe 4)
   saving: {}, // Karten, die gerade per Wischen geändert werden: key → Text
-  canBook: false, fz: null, fzFilter: '', fzBusy: false, fzError: null, fzShowUnassigned: false, // Fahrzeuge (V4)
+  canBook: false, fz: null, fzFilter: '', fzBusy: false, fzMode: 'list', fzWeek: null, fzError: null, fzShowUnassigned: false, // Fahrzeuge (V4)
 };
 
 const $ = sel => document.querySelector(sel);
@@ -879,7 +880,11 @@ function renderFz() {
   const mine = upcoming.filter(fzMine);
   if (state.fzFilter === '@open' && !pending.length) state.fzFilter = '';
 
-  let html = `<div class="fz-filter" role="group" aria-label="Filter">
+  let html = `<div class="seg fz-mode" role="group" aria-label="Darstellung">
+    <button type="button" data-fzm="list" aria-pressed="${state.fzMode !== 'plan'}">Liste</button>
+    <button type="button" data-fzm="plan" aria-pressed="${state.fzMode === 'plan'}">Belegungsplan</button>
+  </div>
+  <div class="fz-filter" role="group" aria-label="Filter">
     <button type="button" data-fzf="" aria-pressed="${!state.fzFilter}">Alle</button>
     ${isAdmin() && pending.length ? `<button type="button" data-fzf="@open" class="open" aria-pressed="${state.fzFilter === '@open'}">Offen · ${pending.length}</button>` : ''}
     ${state.canBook && !isAdmin() && mine.length ? `<button type="button" data-fzf="@mine" aria-pressed="${state.fzFilter === '@mine'}">Meine · ${mine.length}</button>` : ''}
@@ -889,6 +894,12 @@ function renderFz() {
   if (isAdmin() && pending.length && state.fzFilter !== '@open') {
     html += `<div class="draft-bar" role="status">${icon('pencil', 18)}<span class="grow"><b>${pending.length} ${pending.length === 1 ? 'Anfrage wartet' : 'Anfragen warten'}</b> auf Bestätigung</span>
       <button class="btn small" type="button" data-fzf="@open">Ansehen</button></div>`;
+  }
+
+  const legacy = new Set(upcoming.filter(b => b.source === 'google').map(b => b.seriesId || b.id)).size;
+  if (isAdmin() && legacy && state.fzFilter !== '@open') {
+    html += `<div class="draft-bar" role="status">${icon('pencil', 18)}<span class="grow"><b>${legacy} ${legacy === 1 ? 'Eintrag' : 'Einträge'}</b> im alten Format (direkt in Google eingetragen)</span>
+      <button class="btn small" type="button" id="fzNormBtn">Vereinheitlichen…</button></div>`;
   }
 
   if (state.fzError) {
@@ -906,7 +917,9 @@ function renderFz() {
   }
 
   const f = state.fzFilter;
-  const list = upcoming.filter(b => (!f || (f === '@open' ? b.state === 'requested' : f === '@mine' ? fzMine(b) : b.vehicles.includes(f))) && fzMatches(b, q));
+  const pick = b => (!f || (f === '@open' ? b.state === 'requested' : f === '@mine' ? fzMine(b) : b.vehicles.includes(f))) && fzMatches(b, q);
+  if (state.fzMode === 'plan') return fzFinish(html + fzPlanHtml(fz, pick));
+  const list = upcoming.filter(pick);
   const wEnd = addDays(weekStart(today), 6);
   const nwEnd = addDays(wEnd, 7);
   const groups = [];
@@ -935,13 +948,139 @@ function renderFz() {
     html += `<p class="small-note center fz-range">Gezeigt bis ${esc(fmt(fz.range.to, { day: '2-digit', month: '2-digit', year: 'numeric' }))} · Quelle: Google Kalender</p>`;
   }
 
+  fzFinish(html);
+}
+
+function fzFinish(html) {
   listEl.innerHTML = html;
   listEl.querySelectorAll('[data-fzf]').forEach(btn => (btn.onclick = () => {
     state.fzFilter = btn.dataset.fzf;
     renderFz();
   }));
+  listEl.querySelectorAll('[data-fzm]').forEach(btn => (btn.onclick = () => {
+    state.fzMode = btn.dataset.fzm;
+    store.set(KEY_FZ_MODE, state.fzMode);
+    renderFz();
+  }));
+  listEl.querySelectorAll('[data-fzw]').forEach(btn => (btn.onclick = () => {
+    const n = +btn.dataset.fzw;
+    state.fzWeek = n === 0 ? weekStart(todayIso()) : addDays(state.fzWeek || weekStart(todayIso()), 7 * n);
+    renderFz();
+  }));
   const un = $('#fzUnBtn');
   if (un) un.onclick = () => { state.fzShowUnassigned = !state.fzShowUnassigned; renderFz(); };
+  const norm = $('#fzNormBtn');
+  if (norm) norm.onclick = openNormalize;
+  const plan = listEl.querySelector('.fz-plan');
+  if (plan && fzFinish.scrollToToday) {
+    fzFinish.scrollToToday = false;
+    const td = plan.querySelector('th.is-today');
+    if (td) plan.scrollLeft = Math.max(0, td.offsetLeft - plan.querySelector('th').offsetWidth);
+  }
+}
+
+/* --- Belegungsplan: Zeilen = Fahrzeuge, Spalten = Tage einer Woche --- */
+
+function fzPlanHtml(fz, pick) {
+  const today = todayIso();
+  const start = state.fzWeek || weekStart(today);
+  const days = [...Array(7)].map((_, i) => addDays(start, i));
+  const f = state.fzFilter;
+  const rows = f && !f.startsWith('@') ? [f] : fz.vehicles;
+  const inWeek = fz.bookings.filter(b => b.date <= days[6] && fzEnd(b) >= days[0] && pick(b));
+  const cell = (v, d) => inWeek.filter(b => b.vehicles.includes(v) && b.date <= d && fzEnd(b) >= d)
+    .sort((a, b) => (a.allDay ? '' : a.start).localeCompare(b.allDay ? '' : b.start))
+    .map(b => {
+      const t = b.allDay ? 'ganzt.' : (b.date < d ? `bis ${b.end}` : fzEnd(b) > d ? `ab ${b.start}` : `${b.start}–${b.end}`);
+      const cls = ['fz-bar', b.state === 'requested' ? 'req' : b.state === 'rejected' ? 'rej' : ''].filter(Boolean).join(' ');
+      return `<button type="button" class="${cls}" data-fz="${esc(b.id)}" title="${esc(`${b.purpose} · ${fzTimeText(b)}${b.contact ? ' · ' + b.contact : ''}`)}">
+        <b>${esc(t)}</b><span>${esc(b.purpose || b.title)}</span></button>`;
+    }).join('');
+  if (start === weekStart(today)) fzFinish.scrollToToday = true;
+  const busy = inWeek.length;
+  return `<div class="fz-week">
+      <button class="icon-btn" type="button" data-fzw="-1" aria-label="Vorige Woche">${icon('chevronLeft', 20)}</button>
+      <div class="week-title"><b>${esc(weekRangeLabel(start))}</b><span>KW ${isoWeek(start)} · ${esc(weekRelative(start))}${busy ? ` · ${busy} ${busy === 1 ? 'Buchung' : 'Buchungen'}` : ''}</span></div>
+      ${start !== weekStart(today) ? '<button class="btn small" type="button" data-fzw="0">Heute</button>' : ''}
+      <button class="icon-btn" type="button" data-fzw="1" aria-label="Nächste Woche">${icon('chevronRight', 20)}</button>
+    </div>
+    <div class="fz-plan" role="region" aria-label="Belegungsplan" tabindex="0">
+      <table>
+        <thead><tr><th scope="col" class="corner"><span class="sr-only">Fahrzeug</span></th>${days.map(d => `<th scope="col"${d === today ? ' class="is-today"' : ''}>${esc(wdShort(d))}<small>${esc(dayMonth(d))}</small></th>`).join('')}</tr></thead>
+        <tbody>${rows.map(v => `<tr><th scope="row">${esc(v)}</th>${days.map(d => `<td${d === today ? ' class="is-today"' : ''}>${cell(v, d)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <p class="small-note center fz-range">Gelb = angefragt · Antippen für Details${f && f.startsWith('@') ? ' · nur gefilterte Buchungen' : ''}</p>`;
+}
+
+/* --- Altbestand vereinheitlichen (Admin) --- */
+
+async function openNormalize() {
+  openSheet(`<div class="sheet-scroll">${grip}<h2 id="sheetTitle">Alte Einträge vereinheitlichen</h2>
+    <div class="loading" role="status"><span class="spin"></span>Suche Einträge im alten Format…</div></div>`);
+  let d;
+  try {
+    d = await api('normalizeTitles', { dryRun: true });
+  } catch (e) {
+    if (e.auth) { closeSheet(true); return logout(e.message); }
+    closeSheet(true);
+    return toast(e.message, true);
+  }
+  const list = d.candidates || [];
+  const sel = new Set(list.map(c => c.id));
+  const row = c => `<label class="norm-row">
+      <input type="checkbox" data-nid="${esc(c.id)}" checked>
+      <span class="grow"><small>${esc(wdDayMonth(c.date))}${c.recurring ? ' · Serie' : ''}</small>
+        <s>${esc(c.old)}</s>
+        <b>${esc(c.title)}</b>${c.contact ? `<em>Reserviert durch: ${esc(c.contact)}</em>` : ''}</span>
+    </label>`;
+  openSheet(`<div class="sheet-scroll">
+      ${grip}
+      <div class="sheet-head"><div><h2 id="sheetTitle">Alte Einträge vereinheitlichen</h2>
+        <p class="sub">${list.length ? `${list.length} ${list.length === 1 ? 'Eintrag' : 'Einträge'} ab ${esc(dayMonth(addDays(todayIso(), -30)))} – alt (durchgestrichen) → neu` : 'Alles ist schon im neuen Format.'}</p></div>${closeBtn()}</div>
+      ${list.length ? `<div class="note">${icon('info', 18)}<span>Fahrzeuge und Zweck kommen in den Titel, der Name aus „ASP“ als „Reserviert durch“ in die Beschreibung. Serien werden als Ganzes geändert. Die alten Titel werden vorher im Blatt „Fahrzeuge-Backup“ gesichert.</span></div>
+        <label class="norm-all"><input type="checkbox" id="normAll" checked> Alle auswählen</label>
+        <div class="norm-list">${list.map(row).join('')}</div>` : ''}
+      ${(d.unrecognized || []).length ? `<div class="note warn">${icon('info', 18)}<span>Ohne erkanntes Fahrzeug, bleiben unverändert: ${d.unrecognized.map(u => esc(`${dayMonth(u.date)} ${u.title}`)).join(' · ')}</span></div>` : ''}
+    </div>
+    ${list.length ? `<div class="sheet-foot">
+      <button class="btn small" type="button" data-close style="flex:1">Abbrechen</button>
+      <button class="btn primary" type="button" id="normGo" style="flex:2">${list.length} übernehmen</button>
+    </div>` : ''}`);
+  bindClose();
+  if (!list.length) return;
+  const go = $('#normGo');
+  const sync = () => { go.textContent = `${sel.size} übernehmen`; go.disabled = !sel.size; $('#normAll').checked = sel.size === list.length; };
+  sheetEl.querySelectorAll('[data-nid]').forEach(cb => (cb.onchange = () => { if (cb.checked) sel.add(cb.dataset.nid); else sel.delete(cb.dataset.nid); sync(); }));
+  $('#normAll').onchange = e => {
+    sheetEl.querySelectorAll('[data-nid]').forEach(cb => { cb.checked = e.target.checked; if (cb.checked) sel.add(cb.dataset.nid); else sel.delete(cb.dataset.nid); });
+    sync();
+  };
+  go.onclick = async () => {
+    const ids = [...sel];
+    state.busy = true;
+    sheetEl.querySelectorAll('button, input').forEach(c => (c.disabled = true));
+    let done = 0;
+    let last = null;
+    try {
+      for (let i = 0; i < ids.length; i += 100) {
+        go.innerHTML = `<span class="spin"></span>${Math.min(i + 100, ids.length)} von ${ids.length}…`;
+        last = await api('normalizeTitles', { ids: ids.slice(i, i + 100) });
+        done += +(/^(\d+)/.exec(last.message || '') || [0, 0])[1];
+      }
+      applyFz(last);
+      state.busy = false;
+      closeSheet();
+      render();
+      toast(ids.length > 100 ? `${done} Einträge vereinheitlicht.` : last.message);
+    } catch (e) {
+      state.busy = false;
+      if (e.auth) { closeSheet(true); return logout(e.message); }
+      closeSheet(true);
+      if (last) { applyFz(last); render(); }
+      toast(e.message, true);
+    }
+  };
 }
 
 function openFzDetail(id) {
@@ -2772,6 +2911,7 @@ function cleanupBeta() {
   applyTheme();
   const savedView = store.get(KEY_VIEW);
   state.view = savedView === 'week' || savedView === 'table' || savedView === 'fz' ? savedView : 'list';
+  state.fzMode = store.get(KEY_FZ_MODE) === 'plan' ? 'plan' : 'list';
   hydrateIcons(document);
   tableInit();
 

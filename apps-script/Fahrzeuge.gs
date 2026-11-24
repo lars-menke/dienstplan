@@ -24,6 +24,7 @@ const FZ = {
   SERIES_CHECK_DAYS: 366, // so weit werden Serien auf Überschneidungen geprüft
   COLOR_REQUESTED: '5',   // Banane – fällt im Google Kalender auf
   COLOR_REJECTED: '8',    // Graphit
+  BACKUP_SHEET: 'Fahrzeuge-Backup', // alte Titel/Beschreibungen vor dem Vereinheitlichen
 };
 
 /**
@@ -50,7 +51,7 @@ const FZ_IGNORED = [/\b(?:Boots?)?anhänger\b/gi];
 /** Erkennungsreihenfolge: JF-Bus vor allem anderen (sonst bliebe „Bus“ im Zweck stehen). */
 const FZ_MATCH_ORDER = ['JF-Bus', 'GW-P', 'GW-L', 'HLF', 'TLF', 'LF', 'DLK', 'RW', 'MTW', 'ELW', 'KdoW'];
 
-const FZ_ACTIONS = ['getVehicles', 'saveBooking', 'decideBooking', 'cancelBooking'];
+const FZ_ACTIONS = ['getVehicles', 'saveBooking', 'decideBooking', 'cancelBooking', 'normalizeTitles'];
 
 function handleFahrzeuge_(action, data, user) {
   data = data || {};
@@ -59,6 +60,7 @@ function handleFahrzeuge_(action, data, user) {
     case 'saveBooking': return fzSaveBooking_(data, user);
     case 'decideBooking': return fzDecideBooking_(data, user);
     case 'cancelBooking': return fzCancelBooking_(data, user);
+    case 'normalizeTitles': return fzNormalize_(data, user);
     default: throw new Error(`Unbekannte Aktion: ${action}`);
   }
 }
@@ -548,6 +550,103 @@ function fzAfterWrite_(user, changed, removedIds, message, series) {
   data.bookings.sort((a, b) => (a.date + (a.start || '')).localeCompare(b.date + (b.start || '')));
   fzCachePut_(data);
   return Object.assign({ message, series: !!series }, fzGetVehicles_(user, false));
+}
+
+/* =========================
+   ALTBESTAND VEREINHEITLICHEN (Etappe 3)
+   ========================= */
+
+/** Neuer Titel/Beschreibung für einen Eintrag aus Google; null = nicht erkannt bzw. nur Anhänger. */
+function fzNormalized_(ev) {
+  const p = fzParseTitle_(ev.summary);
+  if (p.ignored || !p.vehicles.length) return null;
+  const title = `${p.vehicles.join(' + ')} · ${p.purpose || 'Ohne Zweck'}`;
+  const oldDesc = String(ev.description || '').trim();
+  const lines = [];
+  if (p.contact) lines.push(`Reserviert durch: ${p.contact}`);
+  if (oldDesc && !/^Reserviert durch:/i.test(oldDesc)) lines.push((lines.length ? '\n' : '') + oldDesc);
+  return { vehicles: p.vehicles, purpose: p.purpose || 'Ohne Zweck', contact: p.contact, title, description: lines.join('\n') || oldDesc };
+}
+
+/**
+ * { dryRun: true } → Vorschau; { ids: [...] } → übernehmen (höchstens V3.MAX_BULK).
+ * Betroffen: Einträge ab 30 Tagen zurück ohne App-Kennung; Serien als Ganzes.
+ * Vorher wird alles ins Blatt „Fahrzeuge-Backup“ geschrieben.
+ */
+function fzNormalize_(data, user) {
+  if (user.role !== 'admin') { const e = new Error(MSG_FORBIDDEN); e.isForbidden = true; throw e; }
+  const calId = fzCalendarId_();
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - FZ.PAST_DAYS);
+  const items = [];
+  let pageToken;
+  do {
+    const resp = v3Cal_(() => Calendar.Events.list(calId, { timeMin: from.toISOString(), singleEvents: false, maxResults: 2500, pageToken }));
+    (resp.items || []).forEach(ev => {
+      if (ev.status === 'cancelled' || (ev.eventType || 'default').toLowerCase() !== 'default') return;
+      const priv = (ev.extendedProperties && ev.extendedProperties.private) || {};
+      if (priv.fz === '1') return;
+      items.push(ev);
+    });
+    pageToken = resp.nextPageToken;
+  } while (pageToken);
+
+  const candidates = [];
+  const unrecognized = [];
+  items.forEach(ev => {
+    const n = fzNormalized_(ev);
+    const t = fzTimes_(ev);
+    if (!n) {
+      if (!fzParseTitle_(ev.summary).ignored) unrecognized.push({ id: ev.id, title: ev.summary || '', date: t.date });
+      return;
+    }
+    candidates.push({ id: ev.id, old: ev.summary || '', title: n.title, contact: n.contact, vehicles: n.vehicles,
+      purpose: n.purpose, date: t.date, recurring: !!(ev.recurrence && ev.recurrence.length), ev, n });
+  });
+  candidates.sort((a, b) => a.date.localeCompare(b.date));
+  const strip = c => { const o = Object.assign({}, c); delete o.ev; delete o.n; return o; };
+  if (data.dryRun) return { candidates: candidates.map(strip), unrecognized };
+
+  const ids = Array.isArray(data.ids) ? data.ids.map(String) : [];
+  if (!ids.length) throw new Error('Keine Einträge ausgewählt.');
+  if (ids.length > V3.MAX_BULK) throw new Error(`Höchstens ${V3.MAX_BULK} Einträge pro Aufruf.`);
+  const chosen = candidates.filter(c => ids.includes(c.id));
+  return withWebLock_(() => {
+    fzBackup_(chosen.map(c => c.ev), user.name);
+    const reqs = chosen.map(c => {
+      const body = JSON.parse(JSON.stringify(c.ev));
+      delete body.__cal;
+      body.summary = c.n.title;
+      body.description = c.n.description;
+      const priv = Object.assign({}, (body.extendedProperties && body.extendedProperties.private) || {}, {
+        fz: '1', vehicles: c.n.vehicles.join(','), purpose: c.n.purpose, contact: c.n.contact, state: 'confirmed',
+        requestedBy: '', requestedAt: '', decidedBy: '', decidedAt: '', reason: '', normalizedBy: user.name,
+      });
+      body.extendedProperties = Object.assign({}, body.extendedProperties || {}, { private: priv });
+      return { method: 'put', cal: calId, id: c.id, body };
+    });
+    const res = v3FetchAll_(reqs);
+    const failed = res.filter(r => !r.ok).length;
+    const done = res.length - failed;
+    const message = `${done} ${done === 1 ? 'Eintrag' : 'Einträge'} vereinheitlicht${failed ? `, ${failed} Fehler` : ''}.`;
+    return fzAfterWrite_(user, [], [], message, true);
+  });
+}
+
+/** Alte Titel/Beschreibungen sichern (Blatt „Fahrzeuge-Backup“). */
+function fzBackup_(events, userName) {
+  if (!events.length) return;
+  const ss = getSs_();
+  let sheet = ss.getSheetByName(FZ.BACKUP_SHEET);
+  const headers = ['Gesichert am', 'Von', 'EventId', 'Datum', 'Titel (alt)', 'Beschreibung (alt)', 'Serie'];
+  if (!sheet) {
+    sheet = ss.insertSheet(FZ.BACKUP_SHEET);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  const when = fzStampText_();
+  const rows = events.map(ev => [when, userName || '', ev.id, fzTimes_(ev).date, ev.summary || '', ev.description || '', ev.recurrence ? ev.recurrence.join(' ') : '']);
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
 }
 
 /** Zum Testen im Editor: zeigt, wie die nächsten Einträge erkannt werden. */

@@ -1001,3 +1001,50 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .fz-clash { display: inline-flex; gap: 6px; align-items: flex-start; color: var(--warn); font-weight: 600; }
 .fz-clash .ic { flex: none; margin-top: 2px; }
 .tile-btn.ok { border-color: var(--ok); background: var(--ok-bg); color: var(--ok-ink); }
+
+/* Belegungsplan */
+.fz-mode { flex: none; margin-bottom: 2px; }
+.fz-week { display: flex; align-items: center; gap: 8px; }
+.fz-week .week-title { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.fz-week .week-title b { font-size: 15px; }
+.fz-week .week-title span { font-size: 12px; color: var(--muted); }
+.fz-plan {
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+  margin: 0 -16px; border-left: 0; border-right: 0; border-radius: 0;
+}
+.fz-plan:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.fz-plan table { border-collapse: separate; border-spacing: 0; min-width: 760px; width: 100%; table-layout: fixed; }
+.fz-plan th, .fz-plan td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); vertical-align: top; padding: 4px; }
+.fz-plan thead th { font-size: 12px; font-weight: 700; color: var(--text-2); text-align: center; padding: 6px 4px; background: var(--surface-2); }
+.fz-plan thead th small { display: block; font-weight: 500; color: var(--muted); }
+.fz-plan th.corner, .fz-plan tbody th {
+  position: sticky; left: 0; z-index: 1; width: 64px; background: var(--surface-2);
+  font-size: 13px; font-weight: 700; text-align: left; padding-left: 10px;
+}
+.fz-plan tbody th { vertical-align: middle; }
+.fz-plan .is-today { background: var(--accent-soft); }
+.fz-plan thead th.is-today { color: var(--accent-text); }
+.fz-plan tr:last-child > * { border-bottom: 0; }
+.fz-plan td { height: 44px; }
+.fz-bar {
+  display: flex; flex-direction: column; width: 100%; text-align: left; margin-bottom: 3px;
+  padding: 3px 6px; border-radius: 6px; border: 0; background: var(--text); color: var(--bg);
+  font-size: 11px; line-height: 1.25;
+}
+.fz-bar b { font-weight: 700; }
+.fz-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fz-bar.req { background: var(--draft-bg); color: var(--draft); outline: 1.5px dashed var(--draft-line); outline-offset: -1.5px; }
+.fz-bar.rej { background: var(--off-bg); color: var(--off); text-decoration: line-through; }
+@media (min-width: 600px) { .fz-plan { margin: 0; border: 1px solid var(--line); border-radius: 14px; } }
+
+/* Altbestand vereinheitlichen */
+.norm-all { display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 600; }
+.norm-list { flex: none; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.norm-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.norm-row:last-child { border-bottom: 0; }
+.norm-row input, .norm-all input { width: 20px; height: 20px; flex: none; margin-top: 2px; accent-color: var(--accent); }
+.norm-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.norm-row small { font-size: 12px; color: var(--muted); }
+.norm-row s { font-size: 13px; color: var(--muted); }
+.norm-row b { font-size: 15px; }
+.norm-row em { font-style: normal; font-size: 13px; color: var(--text-2); }

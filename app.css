@@ -1074,3 +1074,22 @@ html:has(.login:not([hidden])), body:has(.login:not([hidden])) { background: #b7
 .fz-pick .chip { height: 38px; padding: 0 4px; justify-content: center; gap: 4px; font-size: 14px; }
 .fz-pick .chip[aria-pressed="true"] { padding: 0 3px; background: var(--text); color: var(--bg); border-color: var(--text); }
 @media (min-width: 600px) { .fz-pick { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+/* Neu / Geändert seit dem letzten Besuch */
+.seg button { position: relative; }
+.tab-badge {
+  position: absolute; top: 2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+  box-shadow: 0 0 0 2px var(--segment);
+}
+.badge.newb { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.badge.chg { background: var(--accent-soft); color: var(--accent-text); font-weight: 700; border: 1px solid var(--accent-soft-line); }
+.card.is-new:not(.is-today) { border-color: var(--accent-soft-line); box-shadow: inset 4px 0 0 var(--accent); }
+.wnew { color: var(--accent-text); }
+.fz-bar.is-new { box-shadow: 0 0 0 2px var(--accent); }
+.new-bar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-soft-line); font-size: 14px;
+}
+.new-bar .grow { flex: 1; min-width: 0; }
+.new-bar .btn { flex: none; }

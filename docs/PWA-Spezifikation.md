@@ -727,3 +727,4 @@ Das Sheet (dieselbe Datei wie früher) ist seit V3 **nur noch Rückfallebene**:
 | 24.11.2026 | V4 Etappe 3: alte Fahrzeug-Einträge vereinheitlichen (Vorschau, Backup-Blatt), Belegungsplan je Fahrzeug und Woche (Schnittstelle 7.4, Cache `dienstplan-v19`) |
 | 24.11.2026 | Optik: Piktogramme im Ansicht-Umschalter (ab 375 px), Fahrzeug-Filter als Auswahlfeld statt Chip-Leiste, Fahrzeugwahl im Formular als 4er-Raster (Cache `dienstplan-v21`) |
 | 24.11.2026 | Service Worker fragt bei jedem Laden nach neuen Dateien (am 10-Minuten-Zwischenspeicher von GitHub Pages vorbei), Updates sind nach einem Neustart der App sofort da (Cache `dienstplan-v22`) |
+| 24.11.2026 | Neu/Geändert seit dem letzten Besuch: Zähler an den Reitern Liste und Fahrzeuge, Markierung an den Karten, Leiste „n neu · m geändert“ mit Filter „Nur Neues“, Zahl am App-Symbol (wo unterstützt); Stand je Gerät (Schnittstelle 7.5 liefert `updatedAt`, Cache `dienstplan-v23`) |

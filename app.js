@@ -11,6 +11,7 @@ const KEY_THEME = 'dienstplan.theme';
 const KEY_VIEW = 'dienstplan.view';
 const KEY_FZ = 'dienstplan.fz';
 const KEY_FZ_MODE = 'dienstplan.fzMode';
+const KEY_SEEN = 'dienstplan.seen';
 const KEY_SWIPE_HINT = 'dienstplan.swipeHintSeen';
 
 // Vorlagen für „Neuer Termin“ (V2 8.5) – aus config.js, sonst diese Vorgabe
@@ -35,6 +36,7 @@ const state = {
   codes: null, codeCount: null, page: null, // Verwaltung (Etappe 3)
   view: 'list', weekStart: null, selDay: null, // Wochenansicht (Etappe 4)
   saving: {}, // Karten, die gerade per Wischen geändert werden: key → Text
+  seen: null, seenBase: {}, curSec: null, newOnly: {}, // Neu/Geändert-Markierung
   canBook: false, fz: null, fzFilter: '', fzBusy: false, fzMode: 'list', fzWeek: null, fzError: null, fzShowUnassigned: false, // Fahrzeuge (V4)
 };
 
@@ -180,6 +182,8 @@ async function load(fresh) {
     reload.removeAttribute('aria-busy');
   }
   render();
+  // Fahrzeuge im Hintergrund, damit der Zähler am Reiter stimmt
+  if (state.view !== 'fz' && !state.loadError && (fresh === true || !state.fz || Date.now() - state.fz.loadedAt > 60000)) loadFz(fresh === true);
 }
 
 /**
@@ -201,6 +205,7 @@ async function mutate(btn, action, data, onSuccess) {
     if (d.codeCount !== undefined) state.codeCount = d.codeCount;
     state.busy = false;
     renderHeader();
+    seenRebase();
     if (onSuccess) return onSuccess(d);
     closeSheet();
     render();
@@ -465,6 +470,137 @@ function renderHeader() {
   }
 }
 
+/* ---------- Neu / Geändert seit dem letzten Besuch ----------
+ * Je Bereich (dp = Dienstplan: Liste/Woche/Tabelle, fz = Fahrzeuge) merkt sich das Gerät,
+ * welche Einträge es schon kannte (ids) und bis zu welchem Änderungsstand (t = Google-Zeit).
+ * Beim Betreten eines Bereichs wird dieser Stand eingefroren (seenBase); die Markierungen
+ * bleiben während des Besuchs sichtbar und verschwinden beim nächsten Besuch.
+ */
+
+const secOf = view => (view === 'fz' ? 'fz' : 'dp');
+
+function seenStore() {
+  if (!state.seen) {
+    try { state.seen = JSON.parse(store.get(KEY_SEEN) || 'null') || {}; } catch (e) { state.seen = {}; }
+  }
+  return state.seen;
+}
+
+/** Kommende Einträge eines Bereichs: [{ key, upd }] (Serien bei Fahrzeugen einmal) */
+function secItems(sec) {
+  const today = todayIso();
+  if (sec === 'fz') {
+    if (!state.fz) return null;
+    const m = new Map();
+    state.fz.bookings.forEach(b => {
+      if ((b.endDate || b.date) < today) return;
+      const key = b.seriesId || b.id;
+      m.set(key, Math.max(m.get(key) || 0, b.updatedAt || 0));
+    });
+    return [...m].map(([key, upd]) => ({ key, upd }));
+  }
+  if (!state.loadedAt) return null;
+  return state.events.filter(e => (e.endDate || e.date) >= today && e.eventId).map(e => ({ key: e.eventId, upd: e.updatedAt || 0 }));
+}
+
+/** Aktuellen Stand eines Bereichs als „gesehen“ speichern. */
+function seenCommit(sec) {
+  const items = secItems(sec);
+  if (!items) return;
+  const all = sec === 'fz' ? state.fz.bookings.map(b => b.seriesId || b.id) : state.events.map(e => e.eventId);
+  const t = Math.max(0, ...items.map(i => i.upd), (seenStore()[sec] || {}).t || 0);
+  seenStore()[sec] = { ids: [...new Set(all.filter(Boolean))], t };
+  store.set(KEY_SEEN, JSON.stringify(state.seen));
+}
+
+/** Vergleichsstand für die Anzeige; beim ersten Mal gilt alles als bekannt. */
+function seenBase(sec) {
+  if (state.seenBase[sec]) return state.seenBase[sec];
+  if (!secItems(sec)) return null;
+  if (!seenStore()[sec]) seenCommit(sec);
+  const s = seenStore()[sec];
+  state.seenBase[sec] = { ids: new Set(s.ids), t: s.t };
+  return state.seenBase[sec];
+}
+
+function markOf(base, key, upd, end) {
+  if (!base || !key || end < todayIso()) return null;
+  if (!base.ids.has(key)) return 'new';
+  return upd > base.t ? 'changed' : null;
+}
+const dpMark = ev => markOf(state.curSec === 'dp' ? state.seenBase.dp : null, ev.eventId, ev.updatedAt || 0, ev.endDate || ev.date);
+const fzMark = b => markOf(state.curSec === 'fz' ? state.seenBase.fz : null, b.seriesId || b.id, b.updatedAt || 0, b.endDate || b.date);
+const markBadge = m => (m === 'new' ? '<span class="badge newb">Neu</span>' : m === 'changed' ? '<span class="badge chg">Geändert</span>' : '');
+
+/** Zähler für einen Bereich gegen den gespeicherten Stand (für die anderen Reiter). */
+function unseenCount(sec) {
+  const items = secItems(sec);
+  const s = seenStore()[sec];
+  if (!items || !s) return 0;
+  const ids = new Set(s.ids);
+  return items.filter(i => !ids.has(i.key) || i.upd > s.t).length;
+}
+
+/** Markierte Einträge im gerade offenen Bereich (Serien bei Fahrzeugen einmal). */
+function visitCount(sec) {
+  const base = state.seenBase[sec];
+  const items = secItems(sec);
+  if (!base || !items) return 0;
+  return items.filter(i => !base.ids.has(i.key) || i.upd > base.t).length;
+}
+
+/** Beim Zeichnen: Bereich betreten/verlassen, Zähler an den Reitern und am App-Symbol. */
+function seenSync() {
+  const sec = secOf(state.view);
+  if (state.curSec && state.curSec !== sec) { seenCommit(state.curSec); delete state.seenBase[state.curSec]; }
+  state.curSec = sec;
+  ['dp', 'fz'].forEach(k => { if (!seenStore()[k] && secItems(k)) seenCommit(k); }); // erstes Mal: alles gilt als bekannt
+  seenBase(sec);
+  // aktueller Bereich: was gerade markiert ist (gegen den eingefrorenen Stand), andere Bereiche: gegen den gespeicherten
+  const counts = { dp: sec === 'dp' ? visitCount('dp') : unseenCount('dp'), fz: sec === 'fz' ? visitCount('fz') : unseenCount('fz') };
+  [['dp', '#btnList'], ['fz', '#btnFz']].forEach(([k, sel]) => {
+    const btn = $(sel);
+    if (!btn) return;
+    let el = btn.querySelector('.tab-badge');
+    if (counts[k]) {
+      if (!el) { el = document.createElement('span'); el.className = 'tab-badge'; btn.appendChild(el); }
+      el.textContent = counts[k] > 99 ? '99+' : String(counts[k]);
+      el.setAttribute('aria-label', `${counts[k]} neu oder geändert`);
+    } else if (el) el.remove();
+  });
+  const total = counts.dp + counts.fz;
+  try {
+    if (navigator.setAppBadge) { if (total) navigator.setAppBadge(total); else navigator.clearAppBadge(); }
+  } catch (e) { /* nicht unterstützt */ }
+}
+
+/** Hinweisleiste oben im Bereich: „3 neu · 1 geändert“ mit Filter. */
+function newBarHtml(sec, marks) {
+  const n = marks.filter(m => m === 'new').length;
+  const c = marks.filter(m => m === 'changed').length;
+  if (!n && !c) { state.newOnly[sec] = false; return ''; }
+  const parts = [n ? `<b>${n} neu</b>` : '', c ? `<b>${c} geändert</b>` : ''].filter(Boolean).join(' · ');
+  return `<div class="new-bar" role="status">${icon('info', 18)}<span class="grow">${parts} seit deinem letzten Besuch</span>
+    <button class="btn small" type="button" data-newonly="${sec}" aria-pressed="${!!state.newOnly[sec]}">${state.newOnly[sec] ? 'Alle zeigen' : 'Nur Neues'}</button></div>`;
+}
+
+function bindNewBar() {
+  listEl.querySelectorAll('[data-newonly]').forEach(b => (b.onclick = () => {
+    state.newOnly[b.dataset.newonly] = !state.newOnly[b.dataset.newonly];
+    render();
+    window.scrollTo(0, 0);
+  }));
+}
+
+/** Nach eigenen Änderungen: aktuellen Bereich als gesehen markieren (eigene Änderungen sind nicht „neu“). */
+function seenRebase() {
+  const sec = state.curSec;
+  if (!sec) return;
+  seenCommit(sec);
+  delete state.seenBase[sec];
+  seenBase(sec);
+}
+
 /* ---------- Liste (V2, Kapitel 8.1) ---------- */
 
 function matches(ev, q) {
@@ -489,6 +625,7 @@ function render() {
   listEl.classList.toggle('week-list', week);
   listEl.classList.toggle('table-list', table);
   document.body.classList.toggle('is-table', table);
+  seenSync();
   if (fz) return renderFz();
   if (week && state.loadedAt) return renderWeek();
   if (table && state.loadedAt) return renderTable();
@@ -516,8 +653,10 @@ function render() {
     return g;
   };
 
+  const marksDp = state.events.map(dpMark);
   for (const ev of state.events) {
     if (!matches(ev, q)) continue;
+    if (state.newOnly.dp && !dpMark(ev)) continue;
     const end = ev.endDate || ev.date;
     if (end < today) { past.push(ev); continue; }
     if (ev.date <= today) groupFor('today', '', true).items.push(ev);
@@ -542,6 +681,7 @@ function render() {
     html += `<div class="draft-bar" role="status">${icon('pencil', 18)}<span class="grow"><b>${drafts.length} ${drafts.length === 1 ? 'Entwurf' : 'Entwürfe'}</b> – für die Mannschaft noch nicht sichtbar</span>${
       can('admin') && ROLE_RANK[state.role] ? '<button class="btn small" type="button" id="draftPublish">Freigeben…</button>' : ''}</div>`;
   }
+  html += newBarHtml('dp', marksDp);
   if (ROLE_RANK[state.role] >= ROLE_RANK.write && !store.get(KEY_SWIPE_HINT)) {
     html += `<p class="swipe-hint">Tipp: Karte nach links wischen = Absagen · nach rechts = Verschieben</p>`;
   }
@@ -572,6 +712,7 @@ function render() {
   }
 
   listEl.innerHTML = html;
+  bindNewBar();
   const dp = $('#draftPublish');
   if (dp) dp.onclick = () => openPublishSheet(state.events.filter(e => e.draft));
   const pb = $('#pastBtn');
@@ -593,6 +734,7 @@ function cardHtml(ev, isToday) {
   const cls = ['card'];
   if (saving) cls.push('is-saving');
   if (ev.draft) cls.push('is-draft');
+  if (dpMark(ev)) cls.push('is-new');
   if (ev.status === S.ABGESAGT) cls.push('is-cancelled');
   else if (ev.status === S.VERSCHOBEN) cls.push('is-moved');
   else if (isToday) cls.push('is-today');
@@ -623,6 +765,7 @@ function categoryBadge(ev) {
 
 function badgesHtml(ev, withStatus) {
   const b = [];
+  if (!withStatus) b.push(markBadge(dpMark(ev)));
   if (ev.draft) b.push(`<span class="badge draft">${icon('pencil', 12, 2.5)}Entwurf</span>`);
   if (withStatus) b.push(statusBadge(ev));
   if (ev.status === S.VERSCHOBEN) {
@@ -740,7 +883,7 @@ function renderWeek() {
       const statusWord = ev.status === S.ABGESAGT ? ', abgesagt' : ev.status === S.VERSCHOBEN ? ', verschoben' : '';
       return `<button class="${cls.join(' ')}" type="button" data-i="${state.events.indexOf(ev)}" data-key="${esc(cardKey(ev))}"
           aria-label="${esc(`${ev.subject}, ${timeText(ev)}${ev.location ? ', ' + ev.location : ''}${statusWord}`)}">
-        <span class="wmeta" aria-hidden="true">${ev.draft ? '<b class="wdraft">Entwurf</b> · ' : ''}${meta}</span><span class="wtitle" aria-hidden="true">${esc(ev.subject)}</span></button>`;
+        <span class="wmeta" aria-hidden="true">${dpMark(ev) ? `<b class="wnew">${dpMark(ev) === 'new' ? 'Neu' : 'Geändert'}</b> · ` : ''}${ev.draft ? '<b class="wdraft">Entwurf</b> · ' : ''}${meta}</span><span class="wtitle" aria-hidden="true">${esc(ev.subject)}</span></button>`;
     }).join('');
     return `<section class="day-row${d === today ? ' is-today' : ''}" id="day-${d}" aria-label="${esc(longDate(d))}">
       <div class="day-label" aria-hidden="true"><span class="wd">${esc(wdShort(d))}</span><span class="d">${toDate(d).getDate()}</span></div>
@@ -796,7 +939,7 @@ async function loadFz(fresh) {
     reload.classList.remove('spinning');
     reload.removeAttribute('aria-busy');
   }
-  if (state.view === 'fz') render();
+  if (state.view === 'fz') render(); else seenSync();
 }
 
 function applyFz(d) {
@@ -843,6 +986,8 @@ function fzCardHtml(b, isToday) {
   const day = b.date < todayIso() && fzEnd(b) >= todayIso() ? todayIso() : b.date;
   const meta = [fzTimeText(b), b.contact ? `Reserviert durch ${b.contact}` : ''].filter(Boolean).map(esc).join(' · ');
   const badges = [];
+  const mk = fzMark(b);
+  if (mk) { badges.push(markBadge(mk)); cls.push('is-new'); }
   if (b.state === 'requested') badges.push(`<span class="badge draft">Angefragt</span>`);
   if (b.state === 'rejected') badges.push(`<span class="badge off">${icon('x', 12, 2.5)}Abgelehnt</span>`);
   if (b.recurring) badges.push(`<span class="badge">${icon('series', 12, 2.5)}Serie</span>`);
@@ -925,7 +1070,9 @@ function renderFz() {
   }
 
   const f = state.fzFilter;
-  const pick = b => (!f || (f === '@open' ? b.state === 'requested' : f === '@mine' ? fzMine(b) : b.vehicles.includes(f))) && fzMatches(b, q);
+  const pick = b => (!f || (f === '@open' ? b.state === 'requested' : f === '@mine' ? fzMine(b) : b.vehicles.includes(f))) && fzMatches(b, q) && (!state.newOnly.fz || !!fzMark(b));
+  const seenKeys = new Set();
+  html += newBarHtml('fz', upcoming.filter(b => { const k = b.seriesId || b.id; if (seenKeys.has(k)) return false; seenKeys.add(k); return true; }).map(fzMark));
   if (state.fzMode === 'plan') return fzFinish(html + fzPlanHtml(fz, pick));
   const list = upcoming.filter(pick);
   const wEnd = addDays(weekStart(today), 6);
@@ -961,6 +1108,7 @@ function renderFz() {
 
 function fzFinish(html) {
   listEl.innerHTML = html;
+  bindNewBar();
   listEl.querySelectorAll('[data-fzf]').forEach(btn => (btn.onclick = () => {
     state.fzFilter = btn.dataset.fzf;
     renderFz();
@@ -1002,7 +1150,7 @@ function fzPlanHtml(fz, pick) {
     .sort((a, b) => (a.allDay ? '' : a.start).localeCompare(b.allDay ? '' : b.start))
     .map(b => {
       const t = b.allDay ? 'ganzt.' : (b.date < d ? `bis ${b.end}` : fzEnd(b) > d ? `ab ${b.start}` : `${b.start}–${b.end}`);
-      const cls = ['fz-bar', b.state === 'requested' ? 'req' : b.state === 'rejected' ? 'rej' : ''].filter(Boolean).join(' ');
+      const cls = ['fz-bar', b.state === 'requested' ? 'req' : b.state === 'rejected' ? 'rej' : '', fzMark(b) ? 'is-new' : ''].filter(Boolean).join(' ');
       return `<button type="button" class="${cls}" data-fz="${esc(b.id)}" title="${esc(`${b.purpose} · ${fzTimeText(b)}${b.contact ? ' · ' + b.contact : ''}`)}">
         <b>${esc(t)}</b><span>${esc(b.purpose || b.title)}</span></button>`;
     }).join('');
@@ -1171,6 +1319,7 @@ async function fzMutate(btn, action, data, opts = {}) {
   try {
     const d = await api(action, data);
     applyFz(d);
+    seenRebase();
     state.busy = false;
     closeSheet();
     render();
@@ -2711,6 +2860,9 @@ function showApp() {
 function logout(message) {
   store.del(KEY_CODE);
   store.del(KEY_DATA);
+  store.del(KEY_SEEN);
+  state.seen = null;
+  state.seenBase = {};
   Object.assign(state, { events: [], role: '', user: '', loadedAt: null, loadError: null });
   showLogin(message);
 }
@@ -2886,6 +3038,17 @@ $('#btnToday').onclick = () => {
 };
 
 document.addEventListener('visibilitychange', () => {
+  // App geht in den Hintergrund: Gesehenes merken; beim Zurückkommen gilt der neue Stand
+  if (document.visibilityState === 'hidden' && state.curSec) {
+    seenCommit(state.curSec);
+    state.seenBase = {};
+    state.newOnly = {};
+    try {
+      const rest = unseenCount('dp') + unseenCount('fz');
+      if (navigator.setAppBadge) { if (rest) navigator.setAppBadge(rest); else navigator.clearAppBadge(); }
+    } catch (e) { /* nicht unterstützt */ }
+    return;
+  }
   if (document.visibilityState === 'visible' && store.get(KEY_CODE) && !state.busy &&
       state.loadedAt && Date.now() - state.loadedAt > 60000) {
     if (state.view === 'fz') loadFz(); else load();

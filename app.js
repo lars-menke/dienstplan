@@ -541,6 +541,14 @@ function unseenCount(sec) {
   return items.filter(i => !ids.has(i.key) || i.upd > s.t).length;
 }
 
+/** Markierte Einträge im gerade offenen Bereich (Serien bei Fahrzeugen einmal). */
+function visitCount(sec) {
+  const base = state.seenBase[sec];
+  const items = secItems(sec);
+  if (!base || !items) return 0;
+  return items.filter(i => !base.ids.has(i.key) || i.upd > base.t).length;
+}
+
 /** Beim Zeichnen: Bereich betreten/verlassen, Zähler an den Reitern und am App-Symbol. */
 function seenSync() {
   const sec = secOf(state.view);
@@ -548,7 +556,8 @@ function seenSync() {
   state.curSec = sec;
   ['dp', 'fz'].forEach(k => { if (!seenStore()[k] && secItems(k)) seenCommit(k); }); // erstes Mal: alles gilt als bekannt
   seenBase(sec);
-  const counts = { dp: sec === 'dp' ? 0 : unseenCount('dp'), fz: sec === 'fz' ? 0 : unseenCount('fz') };
+  // aktueller Bereich: was gerade markiert ist (gegen den eingefrorenen Stand), andere Bereiche: gegen den gespeicherten
+  const counts = { dp: sec === 'dp' ? visitCount('dp') : unseenCount('dp'), fz: sec === 'fz' ? visitCount('fz') : unseenCount('fz') };
   [['dp', '#btnList'], ['fz', '#btnFz']].forEach(([k, sel]) => {
     const btn = $(sel);
     if (!btn) return;

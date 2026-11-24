@@ -140,7 +140,6 @@ async function api(action, data) {
     err.auth = !!json.auth;
     err.forbidden = !!json.forbidden;
     err.conflict = !!json.conflict;
-    err.canForce = !!json.canForce;
     throw err;
   }
   return json;
@@ -824,6 +823,13 @@ function fzMatches(b, q) {
   return !q || `${b.vehicles.join(' ')} ${b.purpose} ${b.contact} ${b.title} ${b.location}`.toLowerCase().includes(q);
 }
 
+/** Andere Buchungen, die dasselbe Fahrzeug zur selben Zeit belegen (z. B. direkt in Google eingetragen). */
+function fzOverlaps(b) {
+  if (b.state === 'rejected') return [];
+  const r = fzRange(b.date, b.endDate, b.allDay, b.start, b.end);
+  return fzClashes(r, b.id).filter(c => c.vehicles.some(v => b.vehicles.includes(v)));
+}
+
 function vchips(b) {
   return b.vehicles.map(v => `<span class="vchip">${esc(v)}</span>`).join('');
 }
@@ -834,13 +840,14 @@ function fzCardHtml(b, isToday) {
   if (b.state === 'requested') cls.push('is-draft');
   if (b.state === 'rejected') cls.push('is-cancelled');
   const day = b.date < todayIso() && fzEnd(b) >= todayIso() ? todayIso() : b.date;
-  const meta = [fzTimeText(b), b.contact ? `ASP ${b.contact}` : ''].filter(Boolean).map(esc).join(' · ');
+  const meta = [fzTimeText(b), b.contact ? `Reserviert durch ${b.contact}` : ''].filter(Boolean).map(esc).join(' · ');
   const badges = [];
   if (b.state === 'requested') badges.push(`<span class="badge draft">Angefragt</span>`);
   if (b.state === 'rejected') badges.push(`<span class="badge off">${icon('x', 12, 2.5)}Abgelehnt</span>`);
   if (b.recurring) badges.push(`<span class="badge">${icon('series', 12, 2.5)}Serie</span>`);
+  if (fzOverlaps(b).length) badges.push(`<span class="badge warn">${icon('info', 12, 2.5)}Doppelt belegt</span>`);
   return `<button class="${cls.join(' ')}" type="button" data-fz="${esc(b.id)}"
-      aria-label="${esc(`${fzVehicles(b)}: ${b.purpose || 'ohne Zweck'}, ${longDate(b.date)}, ${fzTimeText(b)}${b.contact ? ', Ansprechpartner ' + b.contact : ''}`)}">
+      aria-label="${esc(`${fzVehicles(b)}: ${b.purpose || 'ohne Zweck'}, ${longDate(b.date)}, ${fzTimeText(b)}${b.contact ? ', reserviert durch ' + b.contact : ''}`)}">
     <span class="tile" aria-hidden="true"><span class="wd">${esc(wdShort(day))}</span><span class="d">${toDate(day).getDate()}</span><span class="m">${esc(fmt(day, { month: 'short' }).replace('.', ''))}</span></span>
     <span class="card-body" aria-hidden="true">
       <span class="vchips">${vchips(b)}</span>
@@ -945,6 +952,8 @@ function openFzDetail(id) {
   const notes = [];
   if (!b.vehicles.length) notes.push(`<div class="note warn">${icon('info', 18)}<span>Im Titel wurde kein Fahrzeug erkannt. Zuordnen geht ab der nächsten Ausbaustufe; bis dahin bitte den Titel im Google Kalender anpassen (Fahrzeug vorne, z. B. „MTW – …“).</span></div>`);
   if (b.recurring) notes.push(`<div class="note">${icon('series', 18)}<span>Teil einer Serie.</span></div>`);
+  const dup = fzOverlaps(b);
+  if (dup.length) notes.push(`<div class="note warn">${icon('info', 18)}<span><b>Doppelt belegt</b> mit: ${dup.map(c => esc(`${c.purpose || c.title} (${c.allDay ? 'ganztägig' : `${c.start}–${c.end}`})`)).join(', ')}. Bitte eine der Buchungen ändern oder löschen.</span></div>`);
   if (b.state === 'requested') notes.push(`<div class="note draft">${icon('pencil', 18)}<span><b>Angefragt</b> – ein Admin muss die Buchung noch bestätigen.</span></div>`);
   if (b.state === 'rejected') notes.push(`<div class="note">${icon('ban', 18)}<span><b>Abgelehnt</b>${b.reason ? `: ${esc(b.reason)}` : ''}</span></div>`);
   const meta = [];
@@ -978,7 +987,7 @@ function openFzDetail(id) {
     </div>
     <div class="facts">
       <div class="fact">${icon('calendar', 20)}<div><strong>${esc(relDayPrefix(b.date) + longDate(b.date))}</strong><span class="muted">${esc(fzTimeText(b))}</span></div></div>
-      ${b.contact ? `<div class="fact">${icon('user', 20)}<div><strong>${esc(b.contact)}</strong><span class="muted">Ansprechpartner</span></div></div>` : ''}
+      ${b.contact ? `<div class="fact">${icon('user', 20)}<div><strong>${esc(b.contact)}</strong><span class="muted">Reserviert durch</span></div></div>` : ''}
       ${b.location ? `<div class="fact">${icon('pin', 20)}<span>${esc(b.location)}</span></div>` : ''}
       ${b.source === 'google' ? `<div class="fact">${icon('note', 20)}<div><strong>${esc(b.title)}</strong><span class="muted">Eintrag im Google Kalender</span></div></div>` : ''}
     </div>
@@ -990,7 +999,7 @@ function openFzDetail(id) {
   bindClose();
   const on = (a, fn) => { const el = sheetEl.querySelector(`[data-fza="${a}"]`); if (el) el.onclick = e => fn(e.currentTarget); };
   on('edit', () => openFzForm(b));
-  on('confirm', btn => fzMutate(btn, 'decideBooking', { id: ref, decision: 'confirm' }, { onConflict: (e, retry) => fzForceAsk(e, 'Trotzdem bestätigen', () => retry({ force: true }), () => openFzDetail(id)) }));
+  on('confirm', btn => fzMutate(btn, 'decideBooking', { id: ref, decision: 'confirm' }, { onConflict: e => toast(`${e.message} Bitte erst klären (ablehnen oder die andere Buchung ändern).`, true) }));
   on('reject', () => openFzReject(b));
   on('delete', () => confirmAct({
     title: admin ? (b.recurring ? 'Ganze Serie löschen?' : 'Buchung löschen?') : (b.state === 'rejected' ? 'Anfrage entfernen?' : 'Anfrage zurückziehen?'),
@@ -1026,12 +1035,6 @@ async function fzMutate(btn, action, data, opts = {}) {
     if (e.conflict && opts.onConflict) return opts.onConflict(e, extra => fzMutate(btn, action, Object.assign({}, data, extra), opts));
     toast(e.message, true);
   }
-}
-
-/** Überschneidung: Admins dürfen nach Rückfrage trotzdem speichern. */
-function fzForceAsk(e, label, yes, back) {
-  if (!e.canForce) return toast(e.message, true);
-  confirmAct({ title: 'Fahrzeug ist schon belegt', text: e.message, label, cls: 'primary', onYes: yes, back });
 }
 
 function openFzReject(b) {
@@ -1095,7 +1098,7 @@ function openFzForm(b, draft) {
         <label class="field" data-time>Ende<input type="time" id="fzStop" value="${esc(e.end)}"></label>
       </div>
       <label class="field">Zweck<input id="fzPurpose" value="${esc(e.purpose)}" maxlength="120" placeholder="z. B. Lehrgang FTZ" autocomplete="off"></label>
-      <label class="field">Ansprechpartner (ASP)<input id="fzContact" value="${esc(e.contact)}" maxlength="60" autocomplete="name"></label>
+      <label class="field">Reserviert durch<input id="fzContact" value="${esc(e.contact)}" maxlength="60" autocomplete="name"></label>
       ${isNew ? `<fieldset class="rep-box">
         <legend class="label">Wiederholung</legend>
         <div class="rep-row">
@@ -1104,8 +1107,8 @@ function openFzForm(b, draft) {
         </div>
       </fieldset>` : ''}
       <div class="note${admin ? '' : ' draft'}">${icon(admin ? 'info' : 'pencil', 18)}<span>${admin
-        ? 'Als Admin buchst du direkt – die Buchung gilt sofort.'
-        : 'Deine Anfrage steht sofort im Fahrzeugkalender (als „Angefragt“). Ein Admin bestätigt sie.'}</span></div>
+        ? 'Als Admin buchst du direkt – die Buchung gilt sofort. Doppelbuchungen sind nicht möglich.'
+        : 'Deine Anfrage steht sofort im Fahrzeugkalender (als „Angefragt“). Ein Admin bestätigt sie. Doppelbuchungen sind nicht möglich.'}</span></div>
     </div>
     <div class="sheet-foot">
       <button class="btn small" type="button" id="fzBack" style="flex:1">Abbrechen</button>
@@ -1166,16 +1169,16 @@ function openFzForm(b, draft) {
     if (!data.date) return toast('Bitte ein Datum wählen.', true);
     if (!all && (!data.start || !data.end)) return toast('Bitte Beginn und Ende eingeben.', true);
     if (!data.purpose) { $('#fzPurpose').focus(); return toast('Bitte den Zweck angeben.', true); }
-    if (!data.contact) { $('#fzContact').focus(); return toast('Bitte einen Ansprechpartner (ASP) angeben.', true); }
+    if (!data.contact) { $('#fzContact').focus(); return toast('Bitte angeben, wer reserviert.', true); }
     if (repSel && repSel.value) {
       const until = val('#fzUntil');
       if (!until || until < data.date) return toast('Bitte das Ende der Serie wählen.', true);
       const [f, n] = [repSel.value[0] === 'D' ? 'DAILY' : 'WEEKLY', +repSel.value[1]];
       data.recurrence = `RRULE:FREQ=${f}${n > 1 ? `;INTERVAL=${n}` : ''};UNTIL=${until.replace(/-/g, '')}${all ? '' : 'T235959Z'}`;
     }
-    fzMutate(ev.currentTarget, 'saveBooking', data, {
-      onConflict: (err, retry) => fzForceAsk(err, 'Trotzdem buchen', () => retry({ force: true }), () => openFzForm(b, data)),
-    });
+    const hit = fzClashes(range(), selfRef).filter(c => c.vehicles.some(v => sel.has(v)));
+    if (hit.length) { $('#fzFree').scrollIntoView({ block: 'center' }); return toast('Das Fahrzeug ist in diesem Zeitraum schon belegt – bitte einen anderen Zeitraum oder ein anderes Fahrzeug wählen.', true); }
+    fzMutate(ev.currentTarget, 'saveBooking', data, { onConflict: err => toast(err.message, true) });
   };
 }
 

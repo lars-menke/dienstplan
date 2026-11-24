@@ -173,7 +173,7 @@ function fzTimes_(ev) {
 /**
  * Titel aus Google → { vehicles, purpose, contact, ignored }.
  * Fahrzeuge werden überall im Titel gesucht (Schreibweisen aus FAHRZEUGE),
- * „ASP …“ ist der Ansprechpartner, der Rest der Zweck.
+ * „ASP …“ (alte Einträge) ist die Person, die reserviert hat, der Rest der Zweck.
  */
 function fzParseTitle_(summary) {
   let text = ' ' + String(summary || '') + ' ';
@@ -268,8 +268,8 @@ function fzValidate_(d) {
   if (!purpose) throw new Error('Bitte den Zweck angeben.');
   if (purpose.length > FZ.MAX_PURPOSE) throw new Error('Der Zweck ist zu lang.');
   const contact = String(d.contact || '').trim().replace(/\s+/g, ' ');
-  if (!contact) throw new Error('Bitte einen Ansprechpartner (ASP) angeben.');
-  if (contact.length > FZ.MAX_CONTACT) throw new Error('Der Name des Ansprechpartners ist zu lang.');
+  if (!contact) throw new Error('Bitte angeben, wer reserviert.');
+  if (contact.length > FZ.MAX_CONTACT) throw new Error('Der Name bei „Reserviert durch“ ist zu lang.');
   let recurrence = '';
   if (d.recurrence) {
     const r = String(d.recurrence).trim().replace(/^RRULE:/i, '').toUpperCase();
@@ -299,7 +299,7 @@ function fzRangeOfEvent_(ev) {
 }
 
 function fzTitle_(f, state) {
-  const base = `${f.vehicles.join(' + ')} · ${f.purpose} · ASP: ${f.contact}`;
+  const base = `${f.vehicles.join(' + ')} · ${f.purpose}`;
   if (state === 'requested') return `Angefragt: ${base}`;
   if (state === 'rejected') return `Abgelehnt: ${base}`;
   return base;
@@ -323,7 +323,7 @@ function fzBody_(f, meta, existing) {
   }
   if (f.recurrence) body.recurrence = [f.recurrence];
   else delete body.recurrence;
-  const lines = [`Über die Dienstplan-App angefragt von ${meta.requestedBy} am ${meta.requestedAt}.`];
+  const lines = [`Reserviert durch: ${f.contact}`, '', `Über die Dienstplan-App angefragt von ${meta.requestedBy} am ${meta.requestedAt}.`];
   if (meta.state === 'confirmed' && meta.decidedBy) lines.push(`Bestätigt von ${meta.decidedBy} am ${meta.decidedAt}.`);
   if (meta.state === 'rejected') lines.push(`Abgelehnt von ${meta.decidedBy} am ${meta.decidedAt}${meta.reason ? `: ${meta.reason}` : '.'}`);
   if (meta.state === 'requested') lines.push('Noch nicht bestätigt.');
@@ -393,15 +393,14 @@ function fzConflicts_(calId, ranges, vehicles, excludeId) {
 function fzConflictText_(c) {
   const d = c.date.split('-').reverse().join('.');
   const time = c.allDay ? 'ganztägig' : `${c.start}–${c.end}`;
-  return `${c.vehicles.join(' + ')} ist am ${d} (${time}) belegt: ${c.purpose}${c.contact ? ` (ASP ${c.contact})` : ''}${c.state === 'requested' ? ' – angefragt' : ''}`;
+  return `${c.vehicles.join(' + ')} ist am ${d} (${time}) belegt: ${c.purpose}${c.contact ? ` (reserviert durch ${c.contact})` : ''}${c.state === 'requested' ? ' – angefragt' : ''}`;
 }
 
-function fzConflictError_(conflicts, canForce) {
+function fzConflictError_(conflicts) {
   const first = fzConflictText_(conflicts[0]);
   const more = conflicts.length > 1 ? ` (und ${conflicts.length - 1} weitere Überschneidung${conflicts.length > 2 ? 'en' : ''})` : '';
   const err = new Error(first + more + '.');
   err.conflicts = conflicts.slice(0, 20);
-  err.canForce = canForce;
   return err;
 }
 
@@ -419,12 +418,14 @@ function fzRangesOf_(calId, ev) {
   return out;
 }
 
-/** { id?, date, endDate, allDay, start, end, vehicles, purpose, contact, recurrence?, force? } */
+/**
+ * { id?, date, endDate, allDay, start, end, vehicles, purpose, contact, recurrence? }
+ * Doppelbuchungen sind nie möglich – auch nicht für Admins (jedes Fahrzeug gibt es nur einmal).
+ */
 function fzSaveBooking_(data, user) {
   fzRequireBook_(user);
   const f = fzValidate_(data);
   const admin = user.role === 'admin';
-  const force = admin && !!data.force;
   return withWebLock_(() => {
     const calId = fzCalendarId_();
     const now = fzStampText_();
@@ -450,8 +451,8 @@ function fzSaveBooking_(data, user) {
     // einzelne Buchung: vorher prüfen; Serie: anlegen, Vorkommen von Google holen, prüfen, ggf. zurücknehmen
     if (!f.recurrence) {
       const range = fzRangeOfEvent_(body);
-      const conflicts = force ? [] : fzConflicts_(calId, [range], f.vehicles, existing && existing.id);
-      if (conflicts.length) throw fzConflictError_(conflicts, admin);
+      const conflicts = fzConflicts_(calId, [range], f.vehicles, existing && existing.id);
+      if (conflicts.length) throw fzConflictError_(conflicts);
       const saved = existing
         ? v3Cal_(() => Calendar.Events.update(body, calId, existing.id, { sendUpdates: 'none' }))
         : v3Cal_(() => Calendar.Events.insert(body, calId, { sendUpdates: 'none' }));
@@ -461,13 +462,11 @@ function fzSaveBooking_(data, user) {
     const saved = existing
       ? v3Cal_(() => Calendar.Events.update(body, calId, existing.id, { sendUpdates: 'none' }))
       : v3Cal_(() => Calendar.Events.insert(body, calId, { sendUpdates: 'none' }));
-    if (!force) {
-      const conflicts = fzConflicts_(calId, fzRangesOf_(calId, saved), f.vehicles, saved.id);
-      if (conflicts.length) {
-        if (before) { delete before.__cal; v3Cal_(() => Calendar.Events.update(before, calId, saved.id, { sendUpdates: 'none' })); }
-        else v3Cal_(() => Calendar.Events.remove(calId, saved.id, { sendUpdates: 'none' }));
-        throw fzConflictError_(conflicts, admin);
-      }
+    const conflicts = fzConflicts_(calId, fzRangesOf_(calId, saved), f.vehicles, saved.id);
+    if (conflicts.length) {
+      if (before) { delete before.__cal; v3Cal_(() => Calendar.Events.update(before, calId, saved.id, { sendUpdates: 'none' })); }
+      else v3Cal_(() => Calendar.Events.remove(calId, saved.id, { sendUpdates: 'none' }));
+      throw fzConflictError_(conflicts);
     }
     return fzAfterWrite_(user, [], [], fzSavedMessage_(meta.state, !!existing), true);
   });
@@ -478,7 +477,7 @@ function fzSavedMessage_(state, edited) {
   return edited ? 'Buchung gespeichert.' : 'Gebucht.';
 }
 
-/** { id, decision: 'confirm'|'reject', reason?, force? } – nur Admin (WebApp.requiredRole_) */
+/** { id, decision: 'confirm'|'reject', reason? } – nur Admin (WebApp.requiredRole_) */
 function fzDecideBooking_(data, user) {
   const decision = data.decision;
   if (decision !== 'confirm' && decision !== 'reject') throw new Error('Unbekannte Entscheidung.');
@@ -490,9 +489,9 @@ function fzDecideBooking_(data, user) {
     if (!cur.app) throw new Error('Dieser Eintrag stammt direkt aus dem Google Kalender und gilt schon als gebucht.');
     const meta = Object.assign({}, cur.meta, { decidedBy: user.name, decidedAt: fzStampText_(), reason: decision === 'reject' ? reason : '' });
     meta.state = decision === 'confirm' ? 'confirmed' : 'rejected';
-    if (decision === 'confirm' && !data.force) {
+    if (decision === 'confirm') {
       const conflicts = fzConflicts_(calId, fzRangesOf_(calId, ev), cur.f.vehicles, ev.id);
-      if (conflicts.length) throw fzConflictError_(conflicts, true);
+      if (conflicts.length) throw fzConflictError_(conflicts);
     }
     const saved = v3Cal_(() => Calendar.Events.update(fzBody_(cur.f, meta, ev), calId, ev.id, { sendUpdates: 'none' }));
     const msg = decision === 'confirm' ? 'Buchung bestätigt.' : 'Anfrage abgelehnt.';
@@ -552,7 +551,7 @@ function fzAfterWrite_(user, changed, removedIds, message, series) {
 /** Zum Testen im Editor: zeigt, wie die nächsten Einträge erkannt werden. */
 function fahrzeugeTesten() {
   const data = fzRead_();
-  const lines = data.bookings.slice(0, 40).map(b => `${b.date} ${b.start || 'ganzt.'}  [${b.vehicles.join(', ')}]  ${b.purpose}${b.contact ? '  · ASP ' + b.contact : ''}`);
+  const lines = data.bookings.slice(0, 40).map(b => `${b.date} ${b.start || 'ganzt.'}  [${b.vehicles.join(', ')}]  ${b.purpose}${b.contact ? '  · reserviert durch ' + b.contact : ''}`);
   lines.push(`… ${data.bookings.length} Buchungen, ${data.unassigned.length} nicht zugeordnet`);
   data.unassigned.forEach(b => lines.push(`  ? ${b.date}  ${b.title}`));
   Logger.log(lines.join('\n'));

@@ -323,10 +323,12 @@ function fzBody_(f, meta, existing) {
   }
   if (f.recurrence) body.recurrence = [f.recurrence];
   else delete body.recurrence;
-  const lines = [`Reserviert durch: ${f.contact}`, '', `Über die Dienstplan-App angefragt von ${meta.requestedBy} am ${meta.requestedAt}.`];
-  if (meta.state === 'confirmed' && meta.decidedBy) lines.push(`Bestätigt von ${meta.decidedBy} am ${meta.decidedAt}.`);
-  if (meta.state === 'rejected') lines.push(`Abgelehnt von ${meta.decidedBy} am ${meta.decidedAt}${meta.reason ? `: ${meta.reason}` : '.'}`);
-  if (meta.state === 'requested') lines.push('Noch nicht bestätigt.');
+  // kurz: wer reserviert hat und der Stand der Bestätigung (Datum ohne Uhrzeit)
+  const day = t => String(t || '').slice(0, 10);
+  const lines = [`Reserviert durch: ${f.contact}`];
+  if (meta.state === 'confirmed' && meta.decidedBy) lines.push(`Bestätigt von ${meta.decidedBy} am ${day(meta.decidedAt)}`);
+  if (meta.state === 'requested') lines.push('Noch nicht bestätigt');
+  if (meta.state === 'rejected') lines.push(`Abgelehnt von ${meta.decidedBy} am ${day(meta.decidedAt)}${meta.reason ? `: ${meta.reason}` : ''}`);
   body.description = lines.join('\n');
   if (meta.state === 'requested') body.colorId = FZ.COLOR_REQUESTED;
   else if (meta.state === 'rejected') body.colorId = FZ.COLOR_REJECTED;

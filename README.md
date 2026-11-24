@@ -1,44 +1,84 @@
 # 🚒 Dienstplan AchtzehnZwo – Handy-App
 
-Web-App (PWA), um den Dienstplan der Feuerwehr vom Handy aus zu pflegen und anzusehen:
-Liste und Wochenansicht, Termine anlegen, bearbeiten, absagen, verschieben – mit Rollen
-(Lesen · Schreiben · Admin), Kategorien und Verwaltung der Zugangscodes.
-
-Die App zeigt an und schickt Änderungen weiter. Daten und Logik liegen im Google Sheet
-und im zugehörigen Apps Script (Sheet → Google Kalender).
+Web-App (PWA) der Feuerwehr für den **Dienstplan** und die **Fahrzeugbuchung** – auf dem Handy,
+Tablet und Laptop. Master sind zwei **Google Kalender**; die App liest und schreibt sie über ein
+Apps Script. Das Google Sheet dient nur noch als Backup.
 
 ```
-Handy (diese App, GitHub Pages)  →  Apps Script (Schnittstelle)  →  Google Sheet + Kalender
+App (GitHub Pages)  →  Apps Script (Schnittstelle)  →  Google Kalender (Dienstplan, Fahrzeuge 18-2)
+                                                    →  Google Sheet (Backup, Zugangscodes-Menü)
 ```
 
 **App:** https://lars-menke.github.io/dienstplan/
+
+## Funktionen
+
+**Dienstplan**
+- Liste, Wochenansicht und Tabelle (Tabelle für Schreiben/Admin ab Tablet-Breite)
+- Termine anlegen, bearbeiten, absagen, verschieben (auch per Wischen), Serien mit freien Regeln
+  (z. B. „1. Samstag im Monat“), Kategorien mit Farben
+- Entwürfe in einem privaten Kalender – für die Mannschaft erst nach „Freigeben“ sichtbar
+- Import aus Excel/CSV/ICS, Export als Excel/CSV (Admin)
+
+**Fahrzeuge**
+- Belegung als Liste oder Belegungsplan (Fahrzeuge × Wochentage), Filter je Fahrzeug
+- Anfragen mit Prüfung auf Doppelbuchung (Doppelbuchungen sind nie möglich), Bestätigen/Ablehnen durch Admins
+- Einträge, die direkt in Google stehen, werden über den Titel erkannt und lassen sich vereinheitlichen
+
+**Für alle**
+- „Neu“/„Geändert“ seit dem letzten Besuch: Zähler an den Reitern, Markierung an den Karten,
+  Zahl am App-Symbol (wo unterstützt)
+- Hell/Dunkel, öffnet auch offline (letzter Stand)
+
+## Rollen und Zugang
+
+Jede Person meldet sich mit einem **Zugangscode** an (Link zum Teilen). Gespeichert wird nur ein
+Fingerabdruck (Hash) in den Script-Eigenschaften.
+
+| Rolle | darf |
+|---|---|
+| Lesen (auch der gemeinsame Mannschafts-Code) | Dienstplan und Fahrzeugbelegung ansehen |
+| Schreiben | zusätzlich Termine anlegen, ändern, absagen, verschieben |
+| Admin | zusätzlich löschen, Entwürfe freigeben, Import/Export, Kategorien, Zugangscodes, Fahrzeuge bestätigen |
+| + „Fahrzeuge buchen“ (Häkchen je Code) | Fahrzeuge anfragen, eigene Anfragen ändern/zurückziehen |
+
+Admins verwalten die Codes in der App unter „Weitere Aktionen → Verwaltung → Zugangscodes“.
+
+In diesem Repository stehen keine Termine, Passwörter, Codes oder Zugangsdaten. Die IDs des
+Entwurfs- und des Fahrzeugkalenders liegen nur in den Script-Eigenschaften.
 
 ## Dateien
 
 | Datei | Zweck |
 |---|---|
-| `index.html`, `app.css`, `app.js`, `icons.js` | die App |
-| `config.js` | Link zur Apps-Script-Schnittstelle (`…/exec`) und Vorlagen für neue Termine |
-| `manifest.webmanifest`, `*.png` | Name und Icon für den Startbildschirm |
-| `sw.js` | Service Worker (schneller Start, öffnet auch offline) |
-| `fonts/` | Schriften für den Titel-Schriftzug (mit Lizenzen) |
-| `beta/` | nur noch Weiterleitung der früheren Testversion (kann später gelöscht werden) |
-| `apps-script/` | Kopie der Apps-Script-Dateien; sie laufen im Apps-Script-Projekt am Sheet |
-| `docs/PWA-Spezifikation.md` | vollständige Spezifikation (Funktionen, Design, API, Betrieb) |
-| `docs/design/` | Design-Artboards (Referenz) |
+| `index.html`, `app.css`, `app.js`, `icons.js` | die App (Dienstplan, Fahrzeuge, Verwaltung) |
+| `table.js`, `import.js` | Tabellenansicht; Import/Export |
+| `config.js` | Link zur Schnittstelle (`…/exec`) und Vorlagen für neue Termine |
+| `sw.js` | Service Worker: holt immer die neueste Fassung, öffnet ohne Netz aus dem Speicher |
+| `manifest.webmanifest`, `*.png`, `fonts/` | Startbildschirm-Icon, Schriften (mit Lizenzen) |
+| `vendor/` | SheetJS für den Excel-Import (feste Version, Lizenz dabei; wird erst beim Import geladen) |
+| `beta/` | nur noch Weiterleitung der früheren Testversion |
+| `apps-script/WebApp.gs` | Schnittstelle, Rollen, Zugangscodes |
+| `apps-script/Kalender.gs` | Dienstplan im Google Kalender, Entwürfe, Backup ins Sheet |
+| `apps-script/Fahrzeuge.gs` | Fahrzeugbuchung im Kalender „Fahrzeuge 18-2“ |
+| `apps-script/Dienstplan-Sync.gs` | Konfiguration, Sheet-Menü, Hilfsfunktionen |
+| `apps-script/appsscript.json` | Manifest (Zeitzone, Calendar API v3, Web-App) |
+| `.github/workflows/apps-script.yml` | stellt das Backend automatisch bereit |
+| `docs/PWA-Spezifikation.md` | Hauptspezifikation (Funktionen, Design, API, Betrieb, Historie) |
+| `docs/Fahrzeugbuchung-Spezifikation.md` | Fahrzeugbuchung (V4) |
+| `docs/PWA-Spezifikation-V3.md` | Herleitung „Kalender als Master“, Notfall-Rückweg |
+| `docs/beispiele/`, `docs/design/` | Beispiel-Importdatei, Design-Artboards |
 
-## Zugang
+## Änderungen und Bereitstellung
 
-Jede Person braucht einen **Zugangscode** mit Rolle. Admins verwalten die Codes in der App
-(„Weitere Aktionen → Verwaltung → Zugangscodes“) oder im Sheet-Menü. Gespeichert wird nur
-ein Fingerabdruck (Hash) in den Script-Eigenschaften.
-
-In diesem Repository stehen keine Termine, Passwörter oder Codes.
-
-## Änderungen
-
-- **App:** nach Änderungen an `index.html`, `app.css`, `app.js`, `icons.js` oder `config.js`
-  in `sw.js` die Cache-Version erhöhen (z. B. `dienstplan-v6` → `dienstplan-v7`).
-- **Schnittstelle:** `apps-script/*.gs` ins Apps-Script-Projekt kopieren, speichern, dann
-  *Bereitstellungen verwalten → bestehende Bereitstellung → Stift → Neue Version → Bereitstellen*.
-  Die `/exec`-Adresse zeigt im Browser die bereitgestellte `version`.
+- **App:** Änderungen nach `main` → GitHub Pages veröffentlicht nach 1–2 Minuten. Bei Änderungen an
+  App-Dateien die Cache-Version in `sw.js` erhöhen (`dienstplan-vNN`). Auf dem Handy reicht danach
+  ein Neustart der App.
+- **Backend:** Jeder Push nach `main` mit Änderungen unter `apps-script/` startet die GitHub Action:
+  `clasp push` und `clasp deploy` auf die bestehende Bereitstellung (die `/exec`-Adresse bleibt).
+  Zum Testen eines Branches: *Actions → Apps Script bereitstellen → Run workflow → Branch wählen*.
+  Kontrolle: die `/exec`-Adresse zeigt im Browser die bereitgestellte `version`.
+- **Im Apps-Script-Editor nichts direkt ändern** – der nächste Lauf überschreibt es. Neue
+  Google-Berechtigungen einmal bestätigen, indem man im Editor eine Funktion ausführt
+  (z. B. `backupToSheet`).
+- Secrets der Action (GitHub → Settings → Secrets → Actions): `CLASPRC_JSON`, `SCRIPT_ID`.
